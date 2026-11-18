@@ -29,7 +29,40 @@
         "types": "./dist/cjs/index.d.ts",
         "default": "./dist/cjs/index.js"
       }
+    },
+    "./bun-sqlite": {
+      "import": {
+        "types": "./dist/esm/bun-sqlite.d.ts",
+        "default": "./dist/esm/bun-sqlite.js"
+      },
+      "require": {
+        "types": "./dist/cjs/bun-sqlite.d.ts",
+        "default": "./dist/cjs/bun-sqlite.js"
+      }
+    },
+    "./bun-postgres": {
+      "import": {
+        "types": "./dist/esm/bun-postgres.d.ts",
+        "default": "./dist/esm/bun-postgres.js"
+      },
+      "require": {
+        "types": "./dist/cjs/bun-postgres.d.ts",
+        "default": "./dist/cjs/bun-postgres.js"
+      }
+    },
+    "./experimental-migrations": {
+      "import": {
+        "types": "./dist/esm/experimental-migrations.d.ts",
+        "default": "./dist/esm/experimental-migrations.js"
+      },
+      "require": {
+        "types": "./dist/cjs/experimental-migrations.d.ts",
+        "default": "./dist/cjs/experimental-migrations.js"
+      }
     }
+  },
+  "engines": {
+    "bun": ">=1.4.4"
   },
   "scripts": {
     "build": "bun run build:cjs && bun run build:esm",
@@ -46,6 +79,6 @@
   },
   "peerDependencies": {
     "@reasonable-stack/datetime": ">=0.2.0",
-    "typescript": ">=5.1.6"
+    "typescript": ">=5.4.0"
   }
 }
