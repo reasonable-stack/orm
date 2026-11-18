@@ -207,7 +207,7 @@ suite('exec', (fresh) => {
   });
 });
 
-suite('create.index', (fresh, { indexesOf }) => {
+suite('create.index', (fresh, { name, indexesOf }) => {
   let db: Database;
 
   beforeEach(async () => {
@@ -243,6 +243,14 @@ suite('create.index', (fresh, { indexesOf }) => {
   });
 
   test('takes column names verbatim', async () => {
+    await create.index('tasks_scheduled_to_idx', { table: 'tasks', columns: ['scheduled_to'] }).run(db);
+
+    expect(await indexesOf(db, 'tasks')).toEqual([{ name: 'tasks_scheduled_to_idx', unique: false, columns: ['scheduled_to'] }]);
+  });
+
+  // sqlite reads a double-quoted name that's no column as a string, rather
+  // than refusing it
+  test.skipIf(name !== 'bun-postgres')("refuses the keys of a table's definition", async () => {
     await expect(create.index('tasks_scheduled_to_idx', { table: 'tasks', columns: ['scheduledTo'] }).run(db)).rejects.toThrow();
   });
 

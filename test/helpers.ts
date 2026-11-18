@@ -21,7 +21,7 @@ export type Database = IDatabase;
 
 type Connection = IDatabase & { close(): Promise<void> };
 
-// an index's columns read as `name` or `name DESC`
+// an index's columns read as `name` or `name DESC`; indexes are sorted by name
 type Index = { name: string, unique: boolean, columns: string[] };
 
 type Adapter = {
@@ -56,23 +56,27 @@ const adapters: Adapter[] = [
     indexesOf: async (db, table) => {
       const indexes = (await db.execute(`PRAGMA index_list("${table}")`, [])).filter(index => !(index['name'] as string).startsWith('sqlite_autoindex_'));
 
-      return await Promise.all(indexes.map(async index => ({
+      const read = await Promise.all(indexes.map(async index => ({
         name: index['name'] as string,
         unique: Number(index['unique']) === 1,
         columns: (await db.execute(`PRAGMA index_xinfo("${index['name']}")`, []))
           .filter(col => Number(col['key']) === 1)
           .map(col => Number(col['desc']) === 1 ? `${col['name']} DESC` : col['name'] as string),
       })));
+
+      return read.toSorted((a, b) => a.name.localeCompare(b.name));
     },
   },
   {
     name: 'bun-postgres',
     skip: PG_URL === undefined,
-    // one connection pool per suite, emptied before every test
+    // one connection pool per suite, emptied before every test. The tables
+    // are dropped rather than the schema, which would take citext with it:
+    // statements Bun.SQL prepared would then refer to a type that's gone
     fresh: async (previous, logger) => {
       const db = previous ?? pg.connect(PG_URL!, { loggers: [logger] });
-      await db.execute('DROP SCHEMA IF EXISTS "public" CASCADE', []);
-      await db.execute('CREATE SCHEMA "public"', []);
+      const tables = await db.execute('SELECT "tablename" FROM "pg_tables" WHERE "schemaname" = current_schema()', []);
+      if (tables.length > 0) await db.execute(`DROP TABLE ${tables.map(row => `"${row['tablename']}"`).join(', ')} CASCADE`, []);
       await db.execute('CREATE EXTENSION IF NOT EXISTS citext', []);
       return db;
     },
@@ -97,7 +101,7 @@ const adapters: Adapter[] = [
           SELECT 1 FROM "pg_constraint" c WHERE c."conindid" = i."indexrelid"
         )
         GROUP BY i."indexrelid", ic."relname", i."indisunique"
-        ORDER BY i."indexrelid"`;
+        ORDER BY ic."relname"`;
 
       return (await db.execute(sql, [table])).map(index => ({
         name: index['name'] as string,

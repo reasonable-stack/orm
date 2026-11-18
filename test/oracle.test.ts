@@ -475,8 +475,8 @@ suite('oracle: experimental migrations', (fresh, { columnsOf, indexesOf, tablesO
     await migrations({ '0001': migrate0001 })(db);
 
     expect(await indexesOf(db, 'tasks')).toEqual([
-      { name: 'tasks_status_scheduled_to_idx', unique: false, columns: ['status', 'scheduled_to DESC'] },
       { name: 'tasks_created_at_idx', unique: true, columns: ['created_at'] },
+      { name: 'tasks_status_scheduled_to_idx', unique: false, columns: ['status', 'scheduled_to DESC'] },
     ]);
   });
 
