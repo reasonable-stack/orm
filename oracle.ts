@@ -1,4 +1,5 @@
-import { type Infer, embedded, exp, from, into, table, t } from './src';
+import { type Infer, column ,embedded, exp, from, into, table, t } from './src';
+import { z } from 'zod/v4';
 
 //
 // SCHEMA DEFINITION
@@ -21,6 +22,21 @@ export const tasks = table('tasks', {
     timestamp: t.timestamp().default(() => Temporal.Now.instant()),
   }),
   scheduledTo: t.timestamp().default(() => Temporal.Now.instant()),
+});
+
+const tc = {
+  email: () => column({ type: 'CITEXT', schema: z.email() }),
+};
+
+type User = Infer<typeof users>;
+
+const users = table('users', {
+  id: t.uuidv7().generated().primaryKey(),
+  name: t.string(),
+  email: tc.email().unique(),
+  role: t.enum(['admin', 'user', 'guest']).default('guest'),
+  logins: t.integer().unsigned().default(0),
+  createdAt: t.timestamp().default(() => Temporal.Now.instant())
 });
 
 //
@@ -60,6 +76,35 @@ const a3: undefined = await into(tasks)
   .values(task)
   .values([task, task])
   .insert(db, { returning: false });
+
+const a4: User[] = await into(users)
+  .values({ name: 'Jane Doe', email: 'jane@example.com' })
+  .insert(db);
+
+const a5: User[] = await into(users)
+  .values({ name: 'Jane Foster', email: 'jane.foster@example.com' })
+  .insert(db, {
+    conflict: { on: ['email'], do: 'throw' },
+  });
+
+const a6: User[] = await into(users)
+  .values({ name: 'Jane Foster', email: 'jane.foster@example.com' })
+  .insert(db, {
+    conflict: { on: ['email'], do: 'nothing' },
+  });
+
+const a7: User[] = await into(users)
+  .values({ name: 'Jane Foster', email: 'jane.foster@example.com' })
+  .insert(db, {
+    conflict: {
+      on: ['email'],
+      do: {
+        set: { role: 'user' },
+        inc: { logins: 1 },
+        replace: ['name', 'createdAt'],
+      },
+    },
+  });
 
 //
 // UPDATE
