@@ -277,8 +277,12 @@ const migrate = migrations({
 Each of them runs with `.run(db)`. `all([...])` runs runnables and migration
 functions one after the other, as a migration of its own.
 
-`create.index()` takes the indexed `columns` as names, or `[name, 'DESC']`
-pairs. `unique` makes it a unique index, `where` (raw SQL) a partial one, and
+`create.index()` takes the indexed `columns` as names, or `[name, direction]`
+pairs, where the direction is `'ASC'`, `'DESC'`, `'ASC NULLS FIRST'`,
+`'ASC NULLS LAST'`, `'DESC NULLS FIRST'` or `'DESC NULLS LAST'`. sqlite takes
+no `NULLS FIRST` or `LAST` in an index, since it always puts nulls first
+ascending and last descending: it takes those two, and refuses the others.
+`unique` makes it a unique index, `where` (raw SQL) a partial one, and
 `ifNotExists` skips it when it's already there.
 
 `alter.table()` applies its changes one after the other, in order. After

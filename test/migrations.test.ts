@@ -221,6 +221,38 @@ suite('create.index', (fresh, { name, indexesOf }) => {
     expect(await indexesOf(db, 'tasks')).toEqual([{ name: 'tasks_status_scheduled_to_idx', unique: false, columns: ['status', 'scheduled_to DESC'] }]);
   });
 
+  test('puts nulls first or last, as told', async () => {
+    await create.index('tasks_status_scheduled_to_idx', {
+      table: 'tasks',
+      columns: [['status', 'ASC NULLS FIRST'], ['scheduled_to', 'DESC NULLS LAST']],
+    }).run(db);
+
+    // sqlite always puts nulls first ascending and last descending
+    const columns = name === 'bun-sqlite'
+      ? ['status', 'scheduled_to DESC']
+      : ['status NULLS FIRST', 'scheduled_to DESC NULLS LAST'];
+
+    expect(await indexesOf(db, 'tasks')).toEqual([{ name: 'tasks_status_scheduled_to_idx', unique: false, columns }]);
+  });
+
+  test.skipIf(name !== 'bun-postgres')('puts nulls where postgres does by default, as told', async () => {
+    await create.index('tasks_status_scheduled_to_idx', {
+      table: 'tasks',
+      columns: [['status', 'ASC NULLS LAST'], ['scheduled_to', 'DESC NULLS FIRST']],
+    }).run(db);
+
+    expect(await indexesOf(db, 'tasks')).toEqual([{ name: 'tasks_status_scheduled_to_idx', unique: false, columns: ['status', 'scheduled_to DESC'] }]);
+  });
+
+  test.skipIf(name !== 'bun-sqlite')('refuses to put nulls where sqlite never does', async () => {
+    const index = (direction: 'ASC NULLS LAST' | 'DESC NULLS FIRST') =>
+      create.index('tasks_status_idx', { table: 'tasks', columns: [['status', direction]] }).run(db);
+
+    await expect(index('ASC NULLS LAST')).rejects.toThrow('sqlite has no equivalent for "ASC NULLS LAST" in an index: it puts nulls first ascending, and last descending');
+    await expect(index('DESC NULLS FIRST')).rejects.toThrow('sqlite has no equivalent for "DESC NULLS FIRST" in an index: it puts nulls first ascending, and last descending');
+    expect(await indexesOf(db, 'tasks')).toEqual([]);
+  });
+
   test('covers only the rows matching its condition', async () => {
     const things = table('things', { key: t.string(), status: t.string() });
     await create.table(things).run(db);
@@ -255,7 +287,7 @@ suite('create.index', (fresh, { name, indexesOf }) => {
   });
 
   test('refuses unknown directions and empty column lists', () => {
-    expect(() => create.index('x', { table: 'tasks', columns: [['status', 'UP' as never]] })).toThrow('Unknown direction "UP"');
+    expect(() => create.index('x', { table: 'tasks', columns: [['status', 'UP' as never]] })).toThrow('Unknown direction "UP", expected one of ASC, DESC, ASC NULLS FIRST, ASC NULLS LAST, DESC NULLS FIRST, DESC NULLS LAST');
     expect(() => create.index('x', { table: 'tasks', columns: [] })).toThrow('"x" must index at least one column');
   });
 });

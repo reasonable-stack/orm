@@ -21,7 +21,9 @@ export type Database = IDatabase;
 
 type Connection = IDatabase & { close(): Promise<void> };
 
-// an index's columns read as `name` or `name DESC`; indexes are sorted by name
+// an index's columns read as `name` or `name DESC`, plus where nulls go
+// when postgres was told to put them elsewhere than it does by default
+// (last ascending, first descending); indexes are sorted by name
 type Index = { name: string, unique: boolean, columns: string[] };
 
 type Adapter = {
@@ -91,7 +93,12 @@ const adapters: Adapter[] = [
     indexesOf: async (db, table) => {
       const sql = `
         SELECT ic."relname" AS "name", i."indisunique" AS "unique",
-               string_agg(a."attname" || CASE WHEN i."indoption"[k."ord" - 1] & 1 = 1 THEN ' DESC' ELSE '' END, ',' ORDER BY k."ord") AS "columns"
+               string_agg(a."attname" || CASE i."indoption"[k."ord" - 1] & 3
+                 WHEN 1 THEN ' DESC NULLS LAST'
+                 WHEN 2 THEN ' NULLS FIRST'
+                 WHEN 3 THEN ' DESC'
+                 ELSE ''
+               END, ',' ORDER BY k."ord") AS "columns"
         FROM "pg_index" i
         JOIN "pg_class" t ON t."oid" = i."indrelid"
         JOIN "pg_class" ic ON ic."oid" = i."indexrelid"

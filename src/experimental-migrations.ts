@@ -3,6 +3,7 @@ import {
   type Column,
   type ColumnBuilder,
   type ColumnProps,
+  type DialectName,
   type IDatabase,
   type Table,
   NAME,
@@ -84,7 +85,7 @@ const all = (items: (Runnable | Migration)[]): Migration => async (db) => {
 
 // ─── create ──────────────────────────────────────────────────────────────────
 
-const DIRECTIONS = ['ASC', 'DESC'] as const;
+const DIRECTIONS = ['ASC', 'DESC', 'ASC NULLS FIRST', 'ASC NULLS LAST', 'DESC NULLS FIRST', 'DESC NULLS LAST'] as const;
 type Direction = typeof DIRECTIONS[number];
 
 type IndexOptions = {
@@ -96,21 +97,38 @@ type IndexOptions = {
   ifNotExists?: boolean;
 };
 
+// sqlite takes no NULLS FIRST or LAST in an index: it puts nulls first
+// ascending, and last descending, so only those are taken there
+const directionOf = (dialect: DialectName, direction: Direction) => {
+  if (dialect !== 'sqlite' || direction === 'ASC' || direction === 'DESC') return direction;
+  if (direction === 'ASC NULLS FIRST') return 'ASC';
+  if (direction === 'DESC NULLS LAST') return 'DESC';
+  return raise(`sqlite has no equivalent for "${direction}" in an index: it puts nulls first ascending, and last descending`);
+};
+
+const indexedColumn = (dialect: DialectName, col: string, direction: Direction) => {
+  const dir = directionOf(dialect, direction);
+  return dir === 'ASC' ? quote(col) : `${quote(col)} ${dir}`;
+};
+
 const createIndex = (name: string, { table, columns, unique = false, where, ifNotExists = false }: IndexOptions) => {
   if (columns.length === 0) raise(`"${name}" must index at least one column`);
 
   const cols = columns.map(item => {
     const [col, direction] = Array.isArray(item) ? item : [item, 'ASC' as const];
     if (!DIRECTIONS.includes(direction)) raise(`Unknown direction "${direction}", expected one of ${DIRECTIONS.join(', ')}`);
-    return direction === 'ASC' ? quote(col) : `${quote(col)} ${direction}`;
+    return [col, direction] as const;
   });
 
-  const sql = [
-    `CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists ? 'IF NOT EXISTS ' : ''}${quote(name)} ON ${quote(table)} (${cols.join(', ')})`,
-    where && `WHERE ${where}`,
-  ].filter(Boolean).join(' ');
+  return runnable(async (db) => {
+    const sql = [
+      `CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists ? 'IF NOT EXISTS ' : ''}${quote(name)} ON ${quote(table)}`,
+      `(${cols.map(([col, direction]) => indexedColumn(db.dialect.name, col, direction)).join(', ')})`,
+      where && `WHERE ${where}`,
+    ].filter(Boolean).join(' ');
 
-  return runnable(async (db) => { await run(db, statement(sql)); });
+    await run(db, statement(sql));
+  });
 };
 
 // a table as its definition says it is today
