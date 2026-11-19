@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { from, into, t, table } from '../src';
-import { alter, create, drop, exec, file, register, run } from '../src/experimental-migrations';
+import { alter, create, createMigrator, drop, exec, file, run } from '../src/experimental-migrations';
 import { migrate, task, tasks } from './fixtures';
 import { type Database, suite } from './helpers';
 
 // reads the schema back from the database's own catalog
-suite('register', (fresh, { name, columnsOf, indexesOf }) => {
+suite('createMigrator', (fresh, { name, columnsOf, indexesOf }) => {
   let db: Database;
   let sqls: string[];
 
@@ -53,11 +53,11 @@ suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   test('apply only the pending ones, in order', async () => {
     const ran: string[] = [];
 
-    await register({
+    await createMigrator({
       '0001': async () => { ran.push('0001'); },
     })(db);
 
-    await register({
+    await createMigrator({
       '0003': async () => { ran.push('0003'); },
       '0001': async () => { ran.push('0001'); },
       '0002': async () => { ran.push('0002'); },
@@ -69,7 +69,7 @@ suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   test('stop at the first failure, keeping the ones before it', async () => {
     const ran: string[] = [];
 
-    const failing = register({
+    const failing = createMigrator({
       '0001': async () => { ran.push('0001'); },
       '0002': async () => { throw new Error('boom'); },
       '0003': async () => { ran.push('0003'); },
@@ -82,7 +82,7 @@ suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('roll back the statements of a failed migration', async () => {
-    const failing = register({
+    const failing = createMigrator({
       '0001': async (db) => {
         await create.table(tasks).run(db);
         throw new Error('boom');
@@ -96,7 +96,7 @@ suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('run every statement of a SQL file, then data migrations', async () => {
-    await register({
+    await createMigrator({
       '0001': run([
         file('test/sql/things.sql'),
         exec('UPDATE "things" SET "body" = "body" || \'!\''),
@@ -117,7 +117,7 @@ suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('roll back every statement of a failed SQL file', async () => {
-    await expect(register({ '0001': run([file('test/sql/failing.sql')]) })(db)).rejects.toThrow('nope');
+    await expect(createMigrator({ '0001': run([file('test/sql/failing.sql')]) })(db)).rejects.toThrow('nope');
 
     expect(await columnsOf(db, 'things')).toEqual([]);
     expect(await applied()).toEqual([]);

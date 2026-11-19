@@ -199,9 +199,9 @@ const contacts = table('contacts', {
 > change in any release.
 
 ```ts
-import { create, exec, register } from '@reasonable-stack/orm/experimental-migrations';
+import { create, createMigrator, exec } from '@reasonable-stack/orm/experimental-migrations';
 
-const migrate = register({
+const migrate = createMigrator({
   '0001': async (db) => {
     if (db.dialect.name === 'postgres') await exec('CREATE EXTENSION IF NOT EXISTS citext').run(db);
     await create.table(users).run(db);
@@ -229,9 +229,9 @@ ran, which today's definitions may no longer match.
 
 ```ts
 import { t } from '@reasonable-stack/orm';
-import { alter, create, drop, exec, file, register, run } from '@reasonable-stack/orm/experimental-migrations';
+import { alter, create, createMigrator, drop, exec, file, run } from '@reasonable-stack/orm/experimental-migrations';
 
-const migrate = register({
+const migrate = createMigrator({
   // ...
   '0003': async (db) => {
     await alter.table('tasks')

@@ -61,9 +61,6 @@
       }
     }
   },
-  "engines": {
-    "bun": ">=1.4.4"
-  },
   "scripts": {
     "build": "bun run build:cjs && bun run build:esm",
     "build:cjs": "bun run --bun tsc --project tsconfig-cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
@@ -73,8 +70,7 @@
     "typecheck": "bun check"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "zod": "^4"
+    "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": ">=6.0.0"

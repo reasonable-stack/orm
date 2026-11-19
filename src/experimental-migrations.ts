@@ -272,7 +272,7 @@ const timestampColumn = columnsOf(schemaMigrations).find(col => col.key === 'tim
 
 // applies the pending migrations in the order of their ids, each in a
 // transaction of its own, tracking the applied ones in `schema_migrations`
-const register = (migrations: Record<string, Migration>): Migration => async (db) => {
+const createMigrator = (migrations: Record<string, Migration>): Migration => async (db) => {
   await createTable(schemaMigrations, { ifNotExists: true }).run(db);
 
   const { dialect } = db;
@@ -297,9 +297,9 @@ export {
   type Runnable,
   alter,
   create,
+  createMigrator,
   drop,
   exec,
   file,
-  register,
   run,
 };

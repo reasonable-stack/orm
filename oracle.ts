@@ -363,9 +363,9 @@ const m2: (Task & { parent: Task })[] = await from(child)
 //
 
 // migrations.ts
-import { alter, create, drop, exec, register, run } from './src/experimental-migrations';
+import { alter, create, createMigrator, drop, exec, run } from './src/experimental-migrations';
 
-export const migrate = register({
+export const migrate = createMigrator({
   '0001': async (db) => {
     await create.table(tasks).run(db);
     await create.index('tasks_status_scheduled_to_idx', {
