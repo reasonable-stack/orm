@@ -12,7 +12,7 @@ import {
   encode,
   quote,
   renderColumnDefinition,
-  run,
+  run as runStatement,
   t,
   table,
   validate,
@@ -68,18 +68,18 @@ const exec = (sql: string, params: unknown[] = []) => runnable(async (db) => {
   const { length } = statementsOf(sql);
   if (length > 1) throw new Error(`"exec" runs a single statement, got ${length}: run a script with "file"`);
 
-  await run(db, statement(sql, params));
+  await runStatement(db, statement(sql, params));
 });
 
 // runs every statement of a SQL file, one at a time. A relative path is
 // resolved from the working directory, and a URL, e.g. `new URL('./0001.sql',
 // import.meta.url)`, from wherever it points
 const file = (path: string | URL) => runnable(async (db) => {
-  for (const sql of statementsOf(await Bun.file(path).text())) await run(db, statement(sql));
+  for (const sql of statementsOf(await Bun.file(path).text())) await runStatement(db, statement(sql));
 });
 
 // runs statements and migrations one after the other, as a migration
-const all = (items: (Runnable | Migration)[]): Migration => async (db) => {
+const run = (items: (Runnable | Migration)[]): Migration => async (db) => {
   for (const item of items) await (typeof item === 'function' ? item(db) : item.run(db));
 };
 
@@ -127,7 +127,7 @@ const createIndex = (name: string, { table, columns, unique = false, where, ifNo
       where && `WHERE ${where}`,
     ].filter(Boolean).join(' ');
 
-    await run(db, statement(sql));
+    await runStatement(db, statement(sql));
   });
 };
 
@@ -137,7 +137,7 @@ const createTable = (definition: Table, { ifNotExists = false }: { ifNotExists?:
 
   return runnable(async (db) => {
     const sql = `CREATE TABLE ${ifNotExists ? 'IF NOT EXISTS ' : ''}${quote(definition[NAME])} (${cols.map(col => renderColumnDefinition(db.dialect, col)).join(', ')})`;
-    await run(db, statement(sql));
+    await runStatement(db, statement(sql));
   });
 };
 
@@ -242,7 +242,7 @@ class AlterTable implements Runnable {
     let name = this.name;
 
     for (const change of this.changes) {
-      for (const stmt of statementsFor(db, name, change)) await run(db, stmt);
+      for (const stmt of statementsFor(db, name, change)) await runStatement(db, stmt);
       if (change.kind === 'rename') name = change.to;
     }
   }
@@ -255,7 +255,7 @@ const alter = {
 // ─── drop ────────────────────────────────────────────────────────────────────
 
 const dropOf = (kind: 'INDEX' | 'TABLE') => (name: string, { ifExists = false }: { ifExists?: boolean } = {}) =>
-  runnable(async (db) => { await run(db, statement(`DROP ${kind} ${ifExists ? 'IF EXISTS ' : ''}${quote(name)}`)); });
+  runnable(async (db) => { await runStatement(db, statement(`DROP ${kind} ${ifExists ? 'IF EXISTS ' : ''}${quote(name)}`)); });
 
 const drop = {
   index: dropOf('INDEX'),
@@ -273,11 +273,11 @@ const timestampColumn = columnsOf(schemaMigrations).find(col => col.key === 'tim
 
 // applies the pending migrations in the order of their ids, each in a
 // transaction of its own, tracking the applied ones in `schema_migrations`
-const migrations = (migrations: Record<string, Migration>): Migration => async (db) => {
+const register = (migrations: Record<string, Migration>): Migration => async (db) => {
   await createTable(schemaMigrations, { ifNotExists: true }).run(db);
 
   const { dialect } = db;
-  const rows = await run(db, statement('SELECT "id" FROM "schema_migrations"'));
+  const rows = await runStatement(db, statement('SELECT "id" FROM "schema_migrations"'));
   const applied = new Set(rows.map(row => row['id']));
 
   for (const id of Object.keys(migrations).sort()) {
@@ -285,7 +285,7 @@ const migrations = (migrations: Record<string, Migration>): Migration => async (
 
     await db.transaction(async tx => {
       await migrations[id]!(tx);
-      await run(tx, statement(
+      await runStatement(tx, statement(
         `INSERT INTO "schema_migrations" ("id", "timestamp") VALUES (${dialect.placeholder(1)}, ${dialect.placeholder(2)})`,
         [id, encode(dialect, timestampColumn, r.nowUTC())],
       ));
@@ -296,11 +296,11 @@ const migrations = (migrations: Record<string, Migration>): Migration => async (
 export {
   type Migration,
   type Runnable,
-  all,
   alter,
   create,
   drop,
   exec,
   file,
-  migrations,
+  register,
+  run,
 };

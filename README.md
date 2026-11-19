@@ -202,9 +202,9 @@ const contacts = table('contacts', {
 > change in any release.
 
 ```ts
-import { create, exec, migrations } from '@reasonable-stack/orm/experimental-migrations';
+import { create, exec, register } from '@reasonable-stack/orm/experimental-migrations';
 
-const migrate = migrations({
+const migrate = register({
   '0001': async (db) => {
     if (db.dialect.name === 'postgres') await exec('CREATE EXTENSION IF NOT EXISTS citext').run(db);
     await create.table(users).run(db);
@@ -232,9 +232,9 @@ ran, which today's definitions may no longer match.
 
 ```ts
 import { t } from '@reasonable-stack/orm';
-import { all, alter, create, drop, exec, file, migrations } from '@reasonable-stack/orm/experimental-migrations';
+import { alter, create, drop, exec, file, register, run } from '@reasonable-stack/orm/experimental-migrations';
 
-const migrate = migrations({
+const migrate = register({
   // ...
   '0003': async (db) => {
     await alter.table('tasks')
@@ -253,11 +253,11 @@ const migrate = migrations({
       ifNotExists: true,
     }).run(db);
   },
-  '0005': all([
+  '0005': run([
     drop.index('tasks_status_scheduled_to_idx', { ifExists: true }),
     drop.table('legacy_jobs', { ifExists: true }),
   ]),
-  '0006': all([
+  '0006': run([
     file('migrations/0006.sql'),
     exec('UPDATE "users" SET "logins" = 0 WHERE "logins" IS NULL'),
   ]),
@@ -274,7 +274,7 @@ const migrate = migrations({
 | `exec(sql, params?)`                          | runs a single statement, and throws when given more |
 | `file(path)`                                  | runs every statement of a SQL file, one at a time   |
 
-Each of them runs with `.run(db)`. `all([...])` runs runnables and migration
+Each of them runs with `.run(db)`. `run([...])` runs runnables and migration
 functions one after the other, as a migration of its own.
 
 `create.index()` takes the indexed `columns` as names, or `[name, direction]`

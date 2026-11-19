@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from 'bun:test';
 import * as r from '@reasonable-stack/datetime';
 import { exp, from, into, t } from '../src';
-import { all, alter, create, drop, exec, migrations } from '../src/experimental-migrations';
+import { alter, create, drop, exec, register, run } from '../src/experimental-migrations';
 import { type Task, type TaskInsert, minutesAgo, minutesFromNow, tasks } from './fixtures';
 import { type Database, type Equals, type Expand, assert, suite } from './helpers';
 
@@ -440,7 +440,7 @@ suite('oracle: experimental migrations', (fresh, { columnsOf, indexesOf, tablesO
   };
 
   // the oracle's migrations, made to run against the fixtures' tasks
-  const migrate = migrations({
+  const migrate = register({
     '0001': migrate0001,
     '0002': async (db) => {
       await alter.table('tasks')
@@ -453,11 +453,11 @@ suite('oracle: experimental migrations', (fresh, { columnsOf, indexesOf, tablesO
     '0003': async (db) => {
       await alter.table('tasks').rename('legacy_tasks').run(db);
     },
-    '0004': all([
+    '0004': run([
       drop.index('tasks_status_scheduled_to_idx'),
       drop.table('legacy_tasks'),
     ]),
-    '0005': all([
+    '0005': run([
       exec('CREATE TABLE "things" ("id" INTEGER PRIMARY KEY, "status" TEXT NOT NULL)'),
       exec('INSERT INTO "things" ("id", "status") VALUES (1, \'scheduled\')'),
       exec('INSERT INTO "things" ("id", "status") VALUES (2, \'scheduled\')'),
@@ -472,7 +472,7 @@ suite('oracle: experimental migrations', (fresh, { columnsOf, indexesOf, tablesO
   });
 
   test('create indexes, ordered and partial', async () => {
-    await migrations({ '0001': migrate0001 })(db);
+    await register({ '0001': migrate0001 })(db);
 
     expect(await indexesOf(db, 'tasks')).toEqual([
       { name: 'tasks_created_at_idx', unique: true, columns: ['created_at'] },
@@ -481,7 +481,7 @@ suite('oracle: experimental migrations', (fresh, { columnsOf, indexesOf, tablesO
   });
 
   test('alter a table with rows in it', async () => {
-    await migrations({ '0001': migrate0001 })(db);
+    await register({ '0001': migrate0001 })(db);
     await into(tasks).values(task).insert(db);
 
     await alter.table('tasks')

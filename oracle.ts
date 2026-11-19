@@ -364,9 +364,9 @@ const m2: (Task & { parent: Task })[] = await from(child)
 //
 
 // migrations.ts
-import { all, alter, create, drop, exec, migrations } from './src/experimental-migrations';
+import { alter, create, drop, exec, register, run } from './src/experimental-migrations';
 
-export const migrate = migrations({
+export const migrate = register({
   '0001': async (db) => {
     await create.table(tasks).run(db);
     await create.index('tasks_status_scheduled_to_idx', {
@@ -391,11 +391,11 @@ export const migrate = migrations({
   '0003': async (db) => {
     await alter.table('tasks').rename('legacy_tasks').run(db);
   },
-  '0004': all([ // returns `(db) => Promise<void>`
+  '0004': run([ // returns `(db) => Promise<void>`
     drop.index('tasks_status_scheduled_to_idx'),
     drop.table('legacy_tasks'),
   ]),
-  '0005': all([
+  '0005': run([
     exec('INSERT INTO tasks (id, status) VALUES (1, \'scheduled\')'),
     exec('INSERT INTO tasks (id, status) VALUES (2, \'scheduled\')')
   ]),

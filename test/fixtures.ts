@@ -1,7 +1,7 @@
 import * as r from '@reasonable-stack/datetime';
 import { z } from 'zod/v4';
 import { type Infer, defineType, embedded, table, t } from '../src';
-import { create, migrations } from '../src/experimental-migrations';
+import { create, register } from '../src/experimental-migrations';
 
 // ─── custom types ────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ export const users = table('users', {
 
 // ─── migrations ──────────────────────────────────────────────────────────────
 
-export const migrate = migrations({
+export const migrate = register({
   '0001': async (db) => {
     await create.table(tasks).run(db);
     await create.index('tasks_status_scheduled_to_idx', { table: 'tasks', columns: ['status', 'scheduled_to'] }).run(db);

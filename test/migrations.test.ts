@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { from, into, t, table } from '../src';
-import { all, alter, create, drop, exec, file, migrations } from '../src/experimental-migrations';
+import { alter, create, drop, exec, file, register, run } from '../src/experimental-migrations';
 import { migrate, task, tasks } from './fixtures';
 import { type Database, suite } from './helpers';
 
 // reads the schema back from the database's own catalog
-suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
+suite('register', (fresh, { name, columnsOf, indexesOf }) => {
   let db: Database;
   let sqls: string[];
 
@@ -53,11 +53,11 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   test('apply only the pending ones, in order', async () => {
     const ran: string[] = [];
 
-    await migrations({
+    await register({
       '0001': async () => { ran.push('0001'); },
     })(db);
 
-    await migrations({
+    await register({
       '0003': async () => { ran.push('0003'); },
       '0001': async () => { ran.push('0001'); },
       '0002': async () => { ran.push('0002'); },
@@ -69,7 +69,7 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   test('stop at the first failure, keeping the ones before it', async () => {
     const ran: string[] = [];
 
-    const failing = migrations({
+    const failing = register({
       '0001': async () => { ran.push('0001'); },
       '0002': async () => { throw new Error('boom'); },
       '0003': async () => { ran.push('0003'); },
@@ -82,7 +82,7 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('roll back the statements of a failed migration', async () => {
-    const failing = migrations({
+    const failing = register({
       '0001': async (db) => {
         await create.table(tasks).run(db);
         throw new Error('boom');
@@ -96,8 +96,8 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('run every statement of a SQL file, then data migrations', async () => {
-    await migrations({
-      '0001': all([
+    await register({
+      '0001': run([
         file('test/sql/things.sql'),
         exec('UPDATE "things" SET "body" = "body" || \'!\''),
       ]),
@@ -117,7 +117,7 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   });
 
   test('roll back every statement of a failed SQL file', async () => {
-    await expect(migrations({ '0001': all([file('test/sql/failing.sql')]) })(db)).rejects.toThrow('nope');
+    await expect(register({ '0001': run([file('test/sql/failing.sql')]) })(db)).rejects.toThrow('nope');
 
     expect(await columnsOf(db, 'things')).toEqual([]);
     expect(await applied()).toEqual([]);
@@ -139,7 +139,7 @@ suite('migrations', (fresh, { name, columnsOf, indexesOf }) => {
   });
 });
 
-suite('all', (fresh) => {
+suite('run', (fresh) => {
   let db: Database;
 
   beforeEach(async () => {
@@ -149,7 +149,7 @@ suite('all', (fresh) => {
   test('runs statements and migrations in order', async () => {
     const ran: string[] = [];
 
-    await all([
+    await run([
       exec('CREATE TABLE "things" ("id" INTEGER, "body" TEXT)'),
       async (db) => {
         ran.push('fn');
@@ -163,18 +163,18 @@ suite('all', (fresh) => {
   });
 
   test('stops at the first failure', async () => {
-    const run = all([
+    const migration = run([
       exec('CREATE TABLE "things" ("id" INTEGER)'),
       exec('INSERT INTO "nope" ("id") VALUES (1)'),
       exec('DROP TABLE "things"'),
     ]);
 
-    await expect(run(db)).rejects.toThrow();
+    await expect(migration(db)).rejects.toThrow();
     expect(await db.execute('SELECT COUNT(*) AS "n" FROM "things"', [])).toHaveLength(1);
   });
 
   test('runs nothing given nothing', async () => {
-    await all([])(db);
+    await run([])(db);
   });
 });
 
