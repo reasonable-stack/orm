@@ -477,7 +477,7 @@ const toJson = (col: Column, value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (col.fields && col.many) return (value as Row[]).map(item => toJson({ ...col, many: undefined }, item));
   if (col.fields) return Object.fromEntries(Object.values(col.fields).map(field => [field.key, toJson(field, (value as Row)[field.key])]));
-  if (col.type === 'TIMESTAMP') return (value as r.DateTime).toNativeDate().toISOString();
+  if (col.type === 'TIMESTAMP') return (value as r.DateTime).utc().toISOString();
   if (col.type === 'DATE') return (value as r.Date).toISOString();
   if (col.type === 'BIGINT') return String(value);
   if (col.type === 'BINARY') return Buffer.from(value as Uint8Array).toString('hex');
@@ -526,7 +526,11 @@ class SqlBuilder {
     return this;
   }
 
+  // instants and dates no column has encoded yet, e.g. those interpolated
+  // into a fragment, are sent the way the database stores them: in UTC
   param(value: unknown) {
+    if (r.DateTime.is(value)) value = this.dialect.codecs.TIMESTAMP.encode(value);
+    if (r.Date.is(value)) value = this.dialect.codecs.DATE.encode(value);
     this.params.push(value);
     return this.push(this.dialect.placeholder(this.params.length));
   }

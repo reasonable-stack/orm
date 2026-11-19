@@ -112,16 +112,17 @@ const adapters: Adapter[] = [
   },
 ];
 
-type Fresh = (options?: { migrate?: boolean }) => Promise<{ db: Database, sqls: string[] }>;
+type Fresh = (options?: { migrate?: boolean }) => Promise<{ db: Database, sqls: string[], params: unknown[][] }>;
 
 // runs the suite once per adapter. `fresh` hands each test an empty
 // database (migrated, unless told otherwise), plus every statement it runs
-// from then on
+// from then on, and the parameters each one was sent
 export const suite = (name: string, fn: (fresh: Fresh, adapter: Adapter) => void) => {
   for (const adapter of adapters) {
     describe.skipIf(adapter.skip)(`${name} [${adapter.name}]`, () => {
       const sqls: string[] = [];
-      const logger: ILogger = { debug: (sql) => { sqls.push(sql); }, error: () => { } };
+      const params: unknown[][] = [];
+      const logger: ILogger = { debug: (sql, values) => { sqls.push(sql); params.push(values); }, error: () => { } };
       let db: Connection | undefined;
 
       afterAll(async () => {
@@ -132,8 +133,9 @@ export const suite = (name: string, fn: (fresh: Fresh, adapter: Adapter) => void
         db = await adapter.fresh(db, logger);
         if (migrated) await migrate(db);
         sqls.length = 0;
+        params.length = 0;
 
-        return { db, sqls };
+        return { db, sqls, params };
       }, adapter);
     });
   }

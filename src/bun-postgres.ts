@@ -97,7 +97,7 @@ const dialect: Dialect = {
     SEQUENCE:  numeric,
     STRING:    identity<string>(),
     TEXT:      identity<string>(),
-    TIMESTAMP: { encode: (value: r.DateTime) => value.toNativeDate(), decode: (value: Date | string) => r.DateTime.parse(new Date(value).getTime()) },
+    TIMESTAMP: { encode: (value: r.DateTime) => value.utc().toISOString(), decode: (value: Date | string) => r.DateTime.parse(new Date(value).getTime()) },
     UUID:      identity<string>(),
   },
 };

@@ -166,7 +166,9 @@ Keys are camelCase in TypeScript and snake_case in the database
 
 `t.timestamp()` values are `r.DateTime`s from
 [`@reasonable-stack/datetime`](https://github.com/reasonable-stack/datetime),
-always read back in UTC, whatever offset they were written with. They also
+always stored and read back in UTC, whatever offset they were written with
+(including those interpolated into a fragment, or nested in an embedded
+document), so the database's time zone never matters. They also
 take ISO 8601 strings with an offset (`'2026-11-14T09:00:00-03:00'`) and epoch
 milliseconds, but not native `Date`s. `t.date()` values are `r.Date`s, and
 also take `YYYY-MM-DD` strings.

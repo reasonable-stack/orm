@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import * as r from '@reasonable-stack/datetime';
-import { from, into } from '../src';
+import { f, from, into, t } from '../src';
 import { jane, minutesAgo, task, tasks, users } from './fixtures';
 import { type Database, suite } from './helpers';
 
-suite('column types', (fresh) => {
+suite('column types', (fresh, adapter) => {
   let db: Database;
+  let params: unknown[][];
 
   beforeEach(async () => {
-    ({ db } = await fresh());
+    ({ db, params } = await fresh());
   });
 
   describe('t.uuidv7().generated()', () => {
@@ -87,6 +88,33 @@ suite('column types', (fresh) => {
 
       expect(await from(tasks).where(tasks.scheduledTo, '=', r.DateTime.parse('2026-11-14T09:00:00-03:00')).count(db)).toBe(1);
       expect(await from(tasks).where(tasks.scheduledTo, '<', r.DateTime.parse('2026-11-14T12:00:00.001Z')).count(db)).toBe(1);
+    });
+
+    test('stores instants in UTC, whatever their offset', async () => {
+      const scheduledTo = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
+      // what each database is sent for 2026-11-14T12:34:56.789Z
+      const utc = { 'bun-sqlite': 1794659696789, 'bun-postgres': '2026-11-14T12:34:56.789Z' }[adapter.name];
+
+      await into(tasks).values(task({ scheduledTo })).insert(db);
+      expect(params.at(-1)).toContain(utc);
+
+      await from(tasks).update(db, { set: { scheduledTo } });
+      expect(params.at(-1)).toContain(utc);
+
+      expect(await from(tasks).where(tasks.scheduledTo, '=', scheduledTo).count(db)).toBe(1);
+      expect(params.at(-1)).toContain(utc);
+
+      expect(await from(tasks).where(f`${tasks.scheduledTo} = ${scheduledTo}`.as(t.boolean())).count(db)).toBe(1);
+      expect(params.at(-1)).toContain(utc);
+    });
+
+    test('stores nested instants as ISO 8601 strings in UTC', async () => {
+      const timestamp = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
+      await into(tasks).values(task({ events: [{ kind: 'scheduled', timestamp }] })).insert(db);
+
+      const [row] = await db.execute('SELECT CAST("events" AS TEXT) AS "events" FROM "tasks"', []);
+
+      expect(JSON.parse(row!['events'] as string)).toEqual([expect.objectContaining({ timestamp: '2026-11-14T12:34:56.789Z' })]);
     });
 
     test('reads nested timestamps back in UTC too', async () => {
