@@ -1,4 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import type { Codec, Dialect, IDatabase, ILogger, Primitive, Row } from './core.js';
 
@@ -72,7 +71,7 @@ const dialect: Dialect = {
     BINARY:    { encode: (value: Uint8Array) => value, decode: (value: Uint8Array) => new Uint8Array(value) },
     BOOLEAN:   { encode: (value: boolean) => (value ? 1 : 0), decode: (value: number | bigint) => Number(value) === 1 },
     CITEXT:    identity<string>(),
-    DATE:      { encode: (value: r.Date) => value.toISOString(), decode: (value: string) => r.Date.parse(value) },
+    DATE:      { encode: (value: Temporal.PlainDate) => value.toString(), decode: (value: string) => Temporal.PlainDate.from(value) },
     DECIMAL:   numeric,
     FLOAT:     numeric,
     INTEGER:   numeric,
@@ -80,7 +79,7 @@ const dialect: Dialect = {
     SEQUENCE:  numeric,
     STRING:    identity<string>(),
     TEXT:      identity<string>(),
-    TIMESTAMP: { encode: (value: r.DateTime) => value.epoch, decode: (value: number | bigint) => r.DateTime.parse(Number(value)) },
+    TIMESTAMP: { encode: (value: Temporal.Instant) => value.epochMilliseconds, decode: (value: number | bigint) => Temporal.Instant.fromEpochMilliseconds(Number(value)) },
     UUID:      identity<string>(),
   },
 };

@@ -1,5 +1,4 @@
 import { beforeEach, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { embedded, exp, f, from, into, t } from '../src';
 import { type Task, minutesAgo, minutesFromNow, task, tasks, users } from './fixtures';
 import { type Database, type Equals, assert, suite } from './helpers';
@@ -50,7 +49,7 @@ suite('typed fragments', (fresh) => {
   });
 
   test('encode the values they are compared with like a column of that type', async () => {
-    expect(await from(tasks).where(f`${tasks.scheduledTo}`.as(t.timestamp()), '<', r.nowUTC()).all(db)).toEqual([past]);
+    expect(await from(tasks).where(f`${tasks.scheduledTo}`.as(t.timestamp()), '<', Temporal.Now.instant()).all(db)).toEqual([past]);
   });
 
   test('are conditions when read as booleans', async () => {
@@ -63,19 +62,19 @@ suite('typed fragments', (fresh) => {
       .select({ all: exp.collect({ at: f`${tasks.scheduledTo}`.as(t.timestamp()) }) })
       .all(db);
 
-    expect(row!.all.map(item => item.at).sort((a, b) => a.epoch - b.epoch)).toEqual([past.scheduledTo, future.scheduledTo]);
+    expect(row!.all.map(item => item.at).sort(Temporal.Instant.compare)).toEqual([past.scheduledTo, future.scheduledTo]);
   });
 
   test('take instants and dates as parameters, instants in UTC', async () => {
-    const at = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
-    const day = r.Date.parse('2026-11-14');
+    const at = Temporal.Instant.from('2026-11-14T09:34:56.789-03:00');
+    const day = Temporal.PlainDate.from('2026-11-14');
 
     const row = await from(tasks).limit(1).select({
       at: f`${at}`.as(t.timestamp()),
       day: f`${day}`.as(t.date()),
     }).one(db);
 
-    expect(row).toEqual({ at: at.utc(), day });
+    expect(row).toEqual({ at, day });
   });
 
   test('only take a column type', () => {
@@ -100,7 +99,7 @@ export const typeChecks = async (db: Database) => {
     status: f`${tasks.status}`.as(t.enum(['scheduled', 'queued'])),
   }).all(db);
 
-  assert<Equals<typeof typed, { doubled: number, at: r.DateTime, maybe: number | null, status: 'scheduled' | 'queued' }[]>>();
+  assert<Equals<typeof typed, { doubled: number, at: Temporal.Instant, maybe: number | null, status: 'scheduled' | 'queued' }[]>>();
 
   from(tasks).where(f`${tasks.attempts} * 2`.as(t.integer()), '>', 2);
   from(tasks).where(exp.not(f`${tasks.attempts} > ${0}`.as(t.boolean())));

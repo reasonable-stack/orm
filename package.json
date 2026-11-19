@@ -73,12 +73,10 @@
     "typecheck": "bun check"
   },
   "devDependencies": {
-    "@reasonable-stack/datetime": "^0.2.0",
     "@types/bun": "latest",
     "zod": "^4"
   },
   "peerDependencies": {
-    "@reasonable-stack/datetime": ">=0.2.0",
-    "typescript": ">=5.4.0"
+    "typescript": ">=6.0.0"
   }
 }

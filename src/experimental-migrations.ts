@@ -1,4 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
 import {
   type Column,
   type ColumnBuilder,
@@ -287,7 +286,7 @@ const register = (migrations: Record<string, Migration>): Migration => async (db
       await migrations[id]!(tx);
       await runStatement(tx, statement(
         `INSERT INTO "schema_migrations" ("id", "timestamp") VALUES (${dialect.placeholder(1)}, ${dialect.placeholder(2)})`,
-        [id, encode(dialect, timestampColumn, r.nowUTC())],
+        [id, encode(dialect, timestampColumn, Temporal.Now.instant())],
       ));
     });
   }

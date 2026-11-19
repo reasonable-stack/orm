@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { f, from, into, t } from '../src';
 import { jane, minutesAgo, task, tasks, users } from './fixtures';
 import { type Database, suite } from './helpers';
@@ -52,20 +51,21 @@ suite('column types', (fresh, adapter) => {
   });
 
   describe('t.timestamp()', () => {
-    test('round-trips dates to the millisecond', async () => {
-      const scheduledTo = r.DateTime.parse('2026-11-14T12:34:56.789Z');
+    test('round-trips instants to the millisecond', async () => {
+      const scheduledTo = Temporal.Instant.from('2026-11-14T12:34:56.789Z');
       const [row] = await into(tasks).values(task({ scheduledTo })).insert(db);
 
       expect(row!.scheduledTo).toEqual(scheduledTo);
       expect((await from(tasks).one(db))!.scheduledTo).toEqual(scheduledTo);
     });
 
-    test('reads the same instant back in UTC', async () => {
-      const scheduledTo = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
-      const [row] = await into(tasks).values(task({ scheduledTo })).insert(db);
+    test('truncates instants to the millisecond', async () => {
+      const scheduledTo = Temporal.Instant.from('2026-11-14T12:34:56.789999Z');
+      const truncated = Temporal.Instant.from('2026-11-14T12:34:56.789Z');
+      const [row] = await into(tasks).values(task({ scheduledTo, events: [{ kind: 'scheduled', timestamp: scheduledTo }] })).insert(db);
 
-      expect(row!.scheduledTo).toEqual(r.DateTime.parse('2026-11-14T12:34:56.789Z'));
-      expect(row!.scheduledTo.epoch).toBe(scheduledTo.epoch);
+      expect(row).toMatchObject({ scheduledTo: truncated, events: [{ timestamp: truncated }] });
+      expect(await from(tasks).where(tasks.scheduledTo, '=', truncated).count(db)).toBe(1);
     });
 
     test('takes ISO strings and epoch milliseconds', async () => {
@@ -74,8 +74,8 @@ suite('column types', (fresh, adapter) => {
         task({ scheduledTo: 0 }),
       ]).insert(db);
 
-      expect(a!.scheduledTo).toEqual(r.DateTime.parse('2026-11-14T10:34:56.789Z'));
-      expect(b!.scheduledTo).toEqual(r.DateTime.parse(0));
+      expect(a!.scheduledTo).toEqual(Temporal.Instant.from('2026-11-14T10:34:56.789Z'));
+      expect(b!.scheduledTo).toEqual(Temporal.Instant.fromEpochMilliseconds(0));
     });
 
     test('rejects ISO strings without an offset, and native dates', async () => {
@@ -84,14 +84,14 @@ suite('column types', (fresh, adapter) => {
     });
 
     test('compares instants, regardless of offset', async () => {
-      await into(tasks).values(task({ scheduledTo: r.DateTime.parse('2026-11-14T12:00:00Z') })).insert(db);
+      await into(tasks).values(task({ scheduledTo: Temporal.Instant.from('2026-11-14T12:00:00Z') })).insert(db);
 
-      expect(await from(tasks).where(tasks.scheduledTo, '=', r.DateTime.parse('2026-11-14T09:00:00-03:00')).count(db)).toBe(1);
-      expect(await from(tasks).where(tasks.scheduledTo, '<', r.DateTime.parse('2026-11-14T12:00:00.001Z')).count(db)).toBe(1);
+      expect(await from(tasks).where(tasks.scheduledTo, '=', Temporal.Instant.from('2026-11-14T09:00:00-03:00')).count(db)).toBe(1);
+      expect(await from(tasks).where(tasks.scheduledTo, '<', Temporal.Instant.from('2026-11-14T12:00:00.001Z')).count(db)).toBe(1);
     });
 
-    test('stores instants in UTC, whatever their offset', async () => {
-      const scheduledTo = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
+    test('sends instants in UTC, to the millisecond', async () => {
+      const scheduledTo = Temporal.Instant.from('2026-11-14T09:34:56.789999-03:00');
       // what each database is sent for 2026-11-14T12:34:56.789Z
       const utc = { 'bun-sqlite': 1794659696789, 'bun-postgres': '2026-11-14T12:34:56.789Z' }[adapter.name];
 
@@ -108,22 +108,30 @@ suite('column types', (fresh, adapter) => {
       expect(params.at(-1)).toContain(utc);
     });
 
-    test('stores nested instants as ISO 8601 strings in UTC', async () => {
-      const timestamp = r.DateTime.parse('2026-11-14T09:34:56.789-03:00');
-      await into(tasks).values(task({ events: [{ kind: 'scheduled', timestamp }] })).insert(db);
+    // with milliseconds always, so that they sort like the instants they are
+    test('stores nested instants as ISO 8601 strings in UTC, with milliseconds', async () => {
+      await into(tasks).values(task({
+        events: [
+          { kind: 'scheduled', timestamp: Temporal.Instant.from('2026-11-14T09:34:56.789-03:00') },
+          { kind: 'queued', timestamp: Temporal.Instant.from('2026-11-14T12:34:57Z') },
+        ],
+      })).insert(db);
 
       const [row] = await db.execute('SELECT CAST("events" AS TEXT) AS "events" FROM "tasks"', []);
 
-      expect(JSON.parse(row!['events'] as string)).toEqual([expect.objectContaining({ timestamp: '2026-11-14T12:34:56.789Z' })]);
+      expect(JSON.parse(row!['events'] as string)).toEqual([
+        expect.objectContaining({ timestamp: '2026-11-14T12:34:56.789Z' }),
+        expect.objectContaining({ timestamp: '2026-11-14T12:34:57.000Z' }),
+      ]);
     });
 
-    test('reads nested timestamps back in UTC too', async () => {
-      const timestamp = r.DateTime.parse('2026-11-14T09:00:00-03:00');
+    test('reads nested instants back', async () => {
+      const timestamp = Temporal.Instant.from('2026-11-14T09:00:00-03:00');
       await into(tasks).values(task({ events: [{ kind: 'scheduled', timestamp }] })).insert(db);
 
       const row = await from(tasks).select({ events: tasks.events }).one(db);
 
-      expect(row).toEqual({ events: [{ kind: 'scheduled', data: {}, timestamp: timestamp.utc() }] });
+      expect(row).toEqual({ events: [{ kind: 'scheduled', data: {}, timestamp }] });
     });
   });
 
@@ -148,9 +156,9 @@ suite('column types', (fresh, adapter) => {
       const [a, b] = await into(tasks).values([task(), task()]).insert(db);
       const after = Date.now();
 
-      expect(a!.createdAt).toBeInstanceOf(r.DateTime);
-      expect(a!.createdAt.epoch).toBeGreaterThanOrEqual(before);
-      expect(a!.createdAt.epoch).toBeLessThanOrEqual(after);
+      expect(a!.createdAt).toBeInstanceOf(Temporal.Instant);
+      expect(a!.createdAt.epochMilliseconds).toBeGreaterThanOrEqual(before);
+      expect(a!.createdAt.epochMilliseconds).toBeLessThanOrEqual(after);
       expect(a!.createdAt).not.toBe(b!.createdAt);
     });
 
@@ -195,13 +203,13 @@ suite('column types', (fresh, adapter) => {
 
   describe('embedded.many()', () => {
     test('round-trips a list of objects, filling in their defaults', async () => {
-      const timestamp = r.DateTime.parse('2026-11-14T00:00:00.000Z');
+      const timestamp = Temporal.Instant.from('2026-11-14T00:00:00.000Z');
       await into(tasks).values(task({ events: [{ kind: 'scheduled' }, { kind: 'queued', data: { by: 'cron' }, timestamp }] })).insert(db);
 
       const [scheduled, queued] = (await from(tasks).one(db))!.events;
 
       expect(scheduled).toMatchObject({ kind: 'scheduled', data: {} });
-      expect(scheduled!.timestamp).toBeInstanceOf(r.DateTime);
+      expect(scheduled!.timestamp).toBeInstanceOf(Temporal.Instant);
       expect(queued).toEqual({ kind: 'queued', data: { by: 'cron' }, timestamp });
     });
 

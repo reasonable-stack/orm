@@ -1,4 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
 import * as std from './standard-schema.js';
 import { ValidationError } from './standard-schema.js';
 import { type Expand, raise, snakeCase } from './utils.js';
@@ -128,7 +127,7 @@ const types = {
   boolean: () => column({ type: 'BOOLEAN', schema: std.boolean() }),
   // case-insensitive text; postgres needs `CREATE EXTENSION citext` for it
   citext: () => column({ type: 'CITEXT', schema: std.string() }),
-  // a calendar date, read as an `r.Date`
+  // a calendar date, read as a `Temporal.PlainDate`
   date: () => column({ type: 'DATE', schema: std.date() }),
   // `precision` and `scale` only shape postgres' NUMERIC; values are still
   // numbers, so they're as exact as a double
@@ -147,8 +146,8 @@ const types = {
   sequence: () => column({ type: 'SEQUENCE', schema: std.integer(), generated: true }),
   string: ({ size = 255 }: { size?: number } = {}) => column({ type: 'STRING', schema: std.string({ max: size }), length: size }),
   text: () => column({ type: 'TEXT', schema: std.string() }),
-  // an instant, read as an `r.DateTime` in UTC
-  timestamp: () => column({ type: 'TIMESTAMP', schema: std.dateTime() }),
+  // an instant, read as a `Temporal.Instant`, to the millisecond
+  timestamp: () => column({ type: 'TIMESTAMP', schema: std.instant() }),
   uuidv7: () => column({ type: 'UUID', schema: std.uuid() }),
 };
 
@@ -160,8 +159,8 @@ type Path = std.Schema.Issue['path'] & {};
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype;
 
-// documents are cloned, so that no two rows share one; anything else, e.g. an
-// `r.DateTime`, is immutable
+// documents are cloned, so that no two rows share one; anything else, e.g. a
+// `Temporal.Instant`, is immutable
 const defaultOf = (col: Column) => {
   if (typeof col.default === 'function') return col.default();
   return isPlainObject(col.default) || Array.isArray(col.default) ? structuredClone(col.default) : col.default;
@@ -472,15 +471,16 @@ interface IDatabase {
 
 // ─── encoding ────────────────────────────────────────────────────────────────
 
-// inside JSON documents, timestamps are ISO 8601 strings in UTC (which sort
-// like the instants they are), dates are `YYYY-MM-DD` strings, bigints are
-// strings of digits and binaries are hex strings
+// inside JSON documents, timestamps are ISO 8601 strings in UTC, always with
+// milliseconds (so they sort like the instants they are), dates are
+// `YYYY-MM-DD` strings, bigints are strings of digits and binaries are hex
+// strings
 const toJson = (col: Column, value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (col.fields && col.many) return (value as Row[]).map(item => toJson({ ...col, many: undefined }, item));
   if (col.fields) return Object.fromEntries(Object.values(col.fields).map(field => [field.key, toJson(field, (value as Row)[field.key])]));
-  if (col.type === 'TIMESTAMP') return (value as r.DateTime).utc().toISOString();
-  if (col.type === 'DATE') return (value as r.Date).toISOString();
+  if (col.type === 'TIMESTAMP') return (value as Temporal.Instant).toString({ fractionalSecondDigits: 3 });
+  if (col.type === 'DATE') return (value as Temporal.PlainDate).toString();
   if (col.type === 'BIGINT') return String(value);
   if (col.type === 'BINARY') return Buffer.from(value as Uint8Array).toString('hex');
 
@@ -488,13 +488,13 @@ const toJson = (col: Column, value: unknown): unknown => {
 };
 
 // databases may read JSON numbers as bigints, booleans as numbers and
-// timestamps as epoch milliseconds; timestamps are read in UTC
+// timestamps as epoch milliseconds
 const fromJson = (col: Column, value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (col.fields && col.many) return (value as Row[]).map(item => fromJson({ ...col, many: undefined }, item));
   if (col.fields) return Object.fromEntries(Object.values(col.fields).map(field => [field.key, fromJson(field, (value as Row)[field.key])]));
-  if (col.type === 'TIMESTAMP') return r.DateTime.parse(typeof value === 'bigint' ? Number(value) : value as string | number).utc();
-  if (col.type === 'DATE') return r.Date.parse(value as string);
+  if (col.type === 'TIMESTAMP') return typeof value === 'string' ? Temporal.Instant.from(value) : Temporal.Instant.fromEpochMilliseconds(Number(value));
+  if (col.type === 'DATE') return Temporal.PlainDate.from(value as string);
   if (col.type === 'BIGINT') return BigInt(value as string);
   if (col.type === 'BINARY') return new Uint8Array(Buffer.from(value as string, 'hex'));
   if (NUMERIC.includes(col.type)) return Number(value);
@@ -531,8 +531,8 @@ class SqlBuilder {
   // instants and dates no column has encoded yet, e.g. those interpolated
   // into a fragment, are sent the way the database stores them: in UTC
   param(value: unknown) {
-    if (r.DateTime.is(value)) value = this.dialect.codecs.TIMESTAMP.encode(value);
-    if (r.Date.is(value)) value = this.dialect.codecs.DATE.encode(value);
+    if (value instanceof Temporal.Instant) value = this.dialect.codecs.TIMESTAMP.encode(value);
+    if (value instanceof Temporal.PlainDate) value = this.dialect.codecs.DATE.encode(value);
     this.params.push(value);
     return this.push(this.dialect.placeholder(this.params.length));
   }
@@ -836,7 +836,7 @@ type Counted = <O extends Operand>(arg: O) => Operand<AliasesOf<O>, number, neve
 type Summed = <O extends Operand<string, number | null>>(arg: O) => Operand<AliasesOf<O>, number, never>;
 
 // values with an order to them (booleans have none on postgres)
-type Orderable = number | bigint | string | r.DateTime | r.Date;
+type Orderable = number | bigint | string | Temporal.Instant | Temporal.PlainDate;
 
 // type only: marks the aggregates that read null out of no rows. Every group
 // has a row, so they only do without a `groupBy` (see `Projected`)

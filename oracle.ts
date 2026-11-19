@@ -1,5 +1,4 @@
 import { type Infer, embedded, exp, from, into, table, t } from './src';
-import * as r from '@reasonable-stack/datetime';
 
 //
 // SCHEMA DEFINITION
@@ -19,9 +18,9 @@ export const tasks = table('tasks', {
   events: embedded.many({
     kind: t.string(),
     data: t.record().default({}),
-    timestamp: t.timestamp().default(() => r.nowUTC()),
+    timestamp: t.timestamp().default(() => Temporal.Now.instant()),
   }),
-  scheduledTo: t.timestamp().default(() => r.nowUTC()),
+  scheduledTo: t.timestamp().default(() => Temporal.Now.instant()),
 });
 
 //
@@ -68,7 +67,7 @@ const a3: undefined = await into(tasks)
 
 const b0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .update(db, {
     set: { status: 'running' },
     inc: { attempts: 1 },
@@ -76,7 +75,7 @@ const b0: Task[] = await from(tasks)
 
 const b1: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .update(db, {
     set: { status: 'running' },
     inc: { attempts: 1 },
@@ -85,7 +84,7 @@ const b1: Task[] = await from(tasks)
 
 const b2: Pick<Task, 'id' | 'status'>[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .update(db, {
     set: { status: 'running' },
     inc: { attempts: 1 },
@@ -94,7 +93,7 @@ const b2: Pick<Task, 'id' | 'status'>[] = await from(tasks)
 
 const b3: undefined = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .update(db, {
     set: { status: 'running' },
     inc: { attempts: 1 },
@@ -107,22 +106,22 @@ const b3: undefined = await from(tasks)
 
 const c0: undefined = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .delete(db);
 
 const c1: undefined = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .delete(db, { returning: false });
 
 const c2: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .delete(db, { returning: true });
 
 const c3: Pick<Task, 'id' | 'status'>[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .delete(db, { returning: [tasks.id, tasks.status] });
 
 //
@@ -131,12 +130,12 @@ const c3: Pick<Task, 'id' | 'status'>[] = await from(tasks)
 
 const d0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .all(db);
 
 const d1: Task | null = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .one(db); // implies limit=1, null when nothing matches
 
 //
@@ -145,13 +144,13 @@ const d1: Task | null = await from(tasks)
 
 const e0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .all(db);
 
 const e1: Task[] = await from(tasks)
   .where(exp.and([
     exp(tasks.status, '=', 'scheduled'),
-    exp(tasks.scheduledTo, '<=', r.nowUTC()),
+    exp(tasks.scheduledTo, '<=', Temporal.Now.instant()),
   ])) // different syntax, same thing as e0
   .all(db);
 
@@ -165,30 +164,30 @@ const e2: Task[] = await from(tasks)
 
 const f0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .all(db); // defaults projection to all columns of the `from` table
 
 const f1: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .select(tasks) // same thing as f0
   .all(db);
 
 const f2: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .select({ ...tasks }) // same thing as f1
   .all(db);
 
 const f3: Pick<Task, 'id' | 'status'>[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .select({ id: tasks.id, status: tasks.status }) // custom projection
   .all(db);
 
 const f4: Task['id'][] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .select(tasks.id) // unwrapped column value
   .all(db);
 
@@ -198,12 +197,12 @@ const f4: Task['id'][] = await from(tasks)
 
 const g0: number = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .count(db);
 
 const g1: boolean = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .exists(db);
 
 //
@@ -219,7 +218,7 @@ const h0: {
   maxAttempts: number,
 }[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .groupBy(tasks.status)
   .select({
     status: tasks.status,
@@ -237,7 +236,7 @@ const h1: {
   count: number,
 }[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .groupBy([tasks.payload.kind, tasks.status])
   .select({
     kind: tasks.payload.kind,
@@ -256,7 +255,7 @@ const i0: {
   count: number,
 }[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .groupBy([tasks.payload.kind, tasks.status])
   .having('count', '>', 1)
   .having('count', '<', 10)
@@ -273,7 +272,7 @@ const i1: {
   count: number,
 }[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .groupBy([tasks.payload.kind, tasks.status])
   .having(exp.and([
     exp('count', '>=', 1), // `count` refers to the projection column
@@ -292,7 +291,7 @@ const i1: {
 
 const j0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
   .all(db);
 
@@ -302,7 +301,7 @@ const j0: Task[] = await from(tasks)
 
 const k0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<=', r.nowUTC())
+  .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
   .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
   .limit(10)
   .offset(10)

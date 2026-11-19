@@ -1,5 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
-
 // // // // // // // // // // // // // // // // // // // // // // // //
 //                       STANDARD SCHEMA SPEC                        //
 // // // // // // // // // // // // // // // // // // // // // // // //
@@ -180,16 +178,16 @@ export const boolean = () => define<boolean>((input) => typeof input === 'boolea
 
 /**
  * @public  Defines a standard schema for calendar dates, coercing
- *          `YYYY-MM-DD` strings into `r.Date`.
+ *          `YYYY-MM-DD` strings into `Temporal.PlainDate`.
  * @since   0.1.0
  * @version 1
  */
-export const date = () => define<r.Date | string, r.Date>((input) => {
-  if (r.Date.is(input)) return { value: input };
+export const date = () => define<Temporal.PlainDate | string, Temporal.PlainDate>((input) => {
+  if (input instanceof Temporal.PlainDate) return { value: input };
   if (typeof input !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input)) return fail('must be a date, or a date in the YYYY-MM-DD format');
 
   try {
-    return { value: r.Date.parse(input) };
+    return { value: Temporal.PlainDate.from(input, { overflow: 'reject' }) };
   } catch {
     return fail('must be a valid date in the YYYY-MM-DD format');
   }
@@ -198,19 +196,21 @@ export const date = () => define<r.Date | string, r.Date>((input) => {
 /**
  * @public  Defines a standard schema for instants, coercing ISO 8601
  *          strings (with an offset) and epoch timestamps (in milliseconds)
- *          into `r.DateTime`.
+ *          into `Temporal.Instant`. Instants are truncated to the
+ *          millisecond, the most databases are trusted to keep.
  * @since   0.1.0
- * @version 1
+ * @version 2
  */
-export const dateTime = () => define<r.DateTime | string | number, r.DateTime>((input) => {
-  if (r.DateTime.is(input)) return { value: input };
+export const instant = () => define<Temporal.Instant | string | number, Temporal.Instant>((input) => {
+  if (input instanceof Temporal.Instant) return { value: Temporal.Instant.fromEpochMilliseconds(input.epochMilliseconds) };
   if (typeof input === 'number' && !Number.isSafeInteger(input)) return fail('must be an epoch timestamp in whole milliseconds');
-  if (typeof input !== 'string' && typeof input !== 'number') return fail('must be a date-time, an ISO 8601 string with an offset or an epoch timestamp in milliseconds');
+  if (typeof input !== 'string' && typeof input !== 'number') return fail('must be an instant, an ISO 8601 string with an offset or an epoch timestamp in milliseconds');
 
   try {
-    return { value: r.DateTime.parse(input) };
+    const instant = typeof input === 'number' ? Temporal.Instant.fromEpochMilliseconds(input) : Temporal.Instant.from(input);
+    return { value: Temporal.Instant.fromEpochMilliseconds(instant.epochMilliseconds) };
   } catch {
-    return fail('must be a valid date-time, an ISO 8601 string with an offset or an epoch timestamp in milliseconds');
+    return fail('must be a valid instant, an ISO 8601 string with an offset or an epoch timestamp in milliseconds');
   }
 });
 

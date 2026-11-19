@@ -1,5 +1,4 @@
 import { beforeEach, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, from, into } from '../src';
 import { type User, jane, minutesAgo, task, tasks, users } from './fixtures';
 import { type Database, type Equals, assert, suite } from './helpers';
@@ -9,7 +8,7 @@ suite('coalesce', (fresh) => {
   let janeRow: User;
   let johnRow: User;
 
-  const epoch = r.DateTime.parse(0);
+  const epoch = Temporal.Instant.fromEpochMilliseconds(0);
 
   beforeEach(async () => {
     ({ db } = await fresh());
@@ -72,11 +71,11 @@ export const typeChecks = async (db: Database) => {
   const c1 = await from(users)
     .select({
       columns: exp.coalesce(users.lastLoggedInAt, users.createdAt),
-      value: exp.coalesce(users.lastLoggedInAt, r.DateTime.parse(0)),
+      value: exp.coalesce(users.lastLoggedInAt, Temporal.Instant.fromEpochMilliseconds(0)),
       nullable: exp.coalesce(users.lastLoggedInAt, users.lastLoggedInAt),
     })
     .all(db);
-  assert<Equals<typeof c1, { columns: r.DateTime; value: r.DateTime; nullable: r.DateTime | null }[]>>();
+  assert<Equals<typeof c1, { columns: Temporal.Instant; value: Temporal.Instant; nullable: Temporal.Instant | null }[]>>();
 
   // a left-joined column may read null, unless a value or a column of the
   // queried table stands in for it

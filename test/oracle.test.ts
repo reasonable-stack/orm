@@ -1,5 +1,4 @@
 import { beforeEach, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, from, into, t } from '../src';
 import { alter, create, drop, exec, register, run } from '../src/experimental-migrations';
 import { type Task, type TaskInsert, minutesAgo, minutesFromNow, tasks } from './fixtures';
@@ -68,7 +67,7 @@ suite('oracle: updates and deletes', (fresh) => {
 
   const query = () => from(tasks)
     .where(tasks.status, '=', 'scheduled')
-    .where(tasks.scheduledTo, '<=', r.nowUTC());
+    .where(tasks.scheduledTo, '<=', Temporal.Now.instant());
 
   const changes = { set: { status: 'running' }, inc: { attempts: 1 } } as const;
 
@@ -146,7 +145,7 @@ suite('oracle: selects', (fresh) => {
 
   const due = () => from(tasks)
     .where(tasks.status, '=', 'scheduled')
-    .where(tasks.scheduledTo, '<=', r.nowUTC());
+    .where(tasks.scheduledTo, '<=', Temporal.Now.instant());
 
   test('d0: all returns every matching row', async () => {
     const d0: Task[] = await due().all(db);
@@ -172,7 +171,7 @@ suite('oracle: selects', (fresh) => {
     const e1: Task[] = await from(tasks)
       .where(exp.and([
         exp(tasks.status, '=', 'scheduled'),
-        exp(tasks.scheduledTo, '<=', r.nowUTC()),
+        exp(tasks.scheduledTo, '<=', Temporal.Now.instant()),
       ]))
       .all(db);
 
@@ -226,7 +225,7 @@ suite('oracle: selects', (fresh) => {
 
   test('j0: orders by many columns, each ascending unless told', async () => {
     const j0: Task[] = await from(tasks)
-      .where(tasks.scheduledTo, '<=', r.nowUTC())
+      .where(tasks.scheduledTo, '<=', Temporal.Now.instant())
       .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
       .all(db);
 
@@ -261,7 +260,7 @@ suite('oracle: group by and having', (fresh) => {
 
   const due = () => from(tasks)
     .where(tasks.status, '=', 'scheduled')
-    .where(tasks.scheduledTo, '<=', r.nowUTC());
+    .where(tasks.scheduledTo, '<=', Temporal.Now.instant());
 
   test('h0: aggregates per group', async () => {
     const h0 = await due()

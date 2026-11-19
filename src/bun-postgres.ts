@@ -1,4 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
 import { SQL, type TransactionSQL } from 'bun';
 import type { Codec, Column, Dialect, IDatabase, ILogger, Primitive, Row } from './core.js';
 
@@ -89,7 +88,7 @@ const dialect: Dialect = {
     BINARY:    { encode: (value: Uint8Array) => value, decode: (value: Uint8Array) => new Uint8Array(value) },
     BOOLEAN:   identity<boolean>(),
     CITEXT:    identity<string>(),
-    DATE:      { encode: (value: r.Date) => value.toISOString(), decode: (value: Date | string) => r.Date.parse(value instanceof Date ? value.toISOString().slice(0, 10) : value) },
+    DATE:      { encode: (value: Temporal.PlainDate) => value.toString(), decode: (value: Date | string) => Temporal.PlainDate.from(value instanceof Date ? value.toISOString().slice(0, 10) : value) },
     DECIMAL:   numeric,
     FLOAT:     numeric,
     INTEGER:   numeric,
@@ -97,7 +96,7 @@ const dialect: Dialect = {
     SEQUENCE:  numeric,
     STRING:    identity<string>(),
     TEXT:      identity<string>(),
-    TIMESTAMP: { encode: (value: r.DateTime) => value.utc().toISOString(), decode: (value: Date | string) => r.DateTime.parse(new Date(value).getTime()) },
+    TIMESTAMP: { encode: (value: Temporal.Instant) => value.toString({ fractionalSecondDigits: 3 }), decode: (value: Date | string) => Temporal.Instant.fromEpochMilliseconds(new Date(value).getTime()) },
     UUID:      identity<string>(),
   },
 };

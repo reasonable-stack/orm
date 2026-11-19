@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, from, into, t, table } from '../src';
 import { type Status, type Task, minutesAgo, task, tasks, users } from './fixtures';
 import { type Database, type Equals, assert, suite } from './helpers';
@@ -344,7 +343,7 @@ export const typeChecks = async (db: Database) => {
       kind: exp.min(tasks.payload.kind),
     })
     .one(db);
-  assert<Equals<typeof j3, { kinds: number; attempts: number; fewest: number | null; latest: r.DateTime | null; status: Status | null; kind: string | null } | null>>();
+  assert<Equals<typeof j3, { kinds: number; attempts: number; fewest: number | null; latest: Temporal.Instant | null; status: Status | null; kind: string | null } | null>>();
 
   // @ts-expect-error JSON documents have no order to them
   exp.min(tasks.payload);
@@ -373,13 +372,13 @@ export const typeChecks = async (db: Database) => {
     .groupBy(tasks.status)
     .select({ min: exp.min(tasks.attempts), avg: exp.avg(tasks.attempts), max: exp.max(tasks.scheduledTo) })
     .all(db);
-  assert<Equals<typeof grouped, { min: number; avg: number; max: r.DateTime }[]>>();
+  assert<Equals<typeof grouped, { min: number; avg: number; max: Temporal.Instant }[]>>();
 
   const groupedNullable = await from(users)
     .groupBy(users.name)
     .select({ last: exp.max(users.lastLoggedInAt) })
     .all(db);
-  assert<Equals<typeof groupedNullable, { last: r.DateTime | null }[]>>();
+  assert<Equals<typeof groupedNullable, { last: Temporal.Instant | null }[]>>();
 
   // ...or their table's rows may be missing
   const parent = tasks.as('parent');

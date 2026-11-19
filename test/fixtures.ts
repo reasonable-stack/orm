@@ -1,4 +1,3 @@
-import * as r from '@reasonable-stack/datetime';
 import { z } from 'zod/v4';
 import { type Infer, defineType, embedded, table, t } from '../src';
 import { create, register } from '../src/experimental-migrations';
@@ -32,11 +31,11 @@ export const tasks = table('tasks', {
   events: embedded.many({
     kind: t.enum(['scheduled', 'queued', 'started', 'succeeded', 'failed', 'canceled', 'rescued']),
     data: t.record().default({}),
-    timestamp: t.timestamp().default(() => r.nowUTC()),
+    timestamp: t.timestamp().default(() => Temporal.Now.instant()),
   }),
-  createdAt: t.timestamp().default(() => r.nowUTC()),
-  updatedAt: t.timestamp().default(() => r.nowUTC()),
-  scheduledTo: t.timestamp().default(() => r.nowUTC()),
+  createdAt: t.timestamp().default(() => Temporal.Now.instant()),
+  updatedAt: t.timestamp().default(() => Temporal.Now.instant()),
+  scheduledTo: t.timestamp().default(() => Temporal.Now.instant()),
 });
 
 export type User = Infer<typeof users>;
@@ -48,8 +47,8 @@ export const users = table('users', {
   name: t.string(),
   email: tc.email(),
   logins: t.integer().unsigned().default(0),
-  createdAt: t.timestamp().default(() => r.nowUTC()),
-  updatedAt: t.timestamp().default(() => r.nowUTC()),
+  createdAt: t.timestamp().default(() => Temporal.Now.instant()),
+  updatedAt: t.timestamp().default(() => Temporal.Now.instant()),
   lastLoggedInAt: t.timestamp().nullable(),
 });
 
@@ -68,8 +67,10 @@ export const migrate = register({
 
 // ─── rows ────────────────────────────────────────────────────────────────────
 
-export const minutesAgo = (n: number) => r.nowUTC().sub(r.minutes(n));
-export const minutesFromNow = (n: number) => r.nowUTC().add(r.minutes(n));
+// instants to the millisecond, as they are stored
+const now = () => Temporal.Instant.fromEpochMilliseconds(Date.now());
+export const minutesAgo = (n: number) => now().subtract({ minutes: n });
+export const minutesFromNow = (n: number) => now().add({ minutes: n });
 
 // the smallest valid task, overridable field by field
 export const task = (overrides: Partial<TaskInsert> = {}): TaskInsert => ({

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, from, into } from '../src';
 import { type Status, type Task, jane, minutesAgo, minutesFromNow, task, tasks, users } from './fixtures';
 import { type Database, type Equals, type Expand, assert, suite } from './helpers';
@@ -22,7 +21,7 @@ suite('select', (fresh) => {
     sqls.length = 0;
   });
 
-  const due = () => from(tasks).where(tasks.scheduledTo, '<', r.nowUTC());
+  const due = () => from(tasks).where(tasks.scheduledTo, '<', Temporal.Now.instant());
   const statuses = (rows: { status: Status }[]) => rows.map(row => row.status);
 
   describe('all', () => {
@@ -204,10 +203,10 @@ suite('select', (fresh) => {
 // ─── type-level ──────────────────────────────────────────────────────────────
 
 export const typeChecks = async (db: Database) => {
-  const c1 = await from(tasks).where(tasks.scheduledTo, '<', r.nowUTC()).one(db);
+  const c1 = await from(tasks).where(tasks.scheduledTo, '<', Temporal.Now.instant()).one(db);
   assert<Equals<typeof c1, Task | null>>();
 
-  const c2 = await from(tasks).where(tasks.scheduledTo, '<', r.nowUTC()).orderBy([tasks.scheduledTo]).all(db);
+  const c2 = await from(tasks).where(tasks.scheduledTo, '<', Temporal.Now.instant()).orderBy([tasks.scheduledTo]).all(db);
   assert<Equals<typeof c2, Task[]>>();
 
   const c3 = await from(tasks).select({ id: tasks.id, type: tasks.status }).all(db);

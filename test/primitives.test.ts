@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { z } from 'zod/v4';
 import { type Infer, embedded, exp, from, into, t, table } from '../src';
 import { create } from '../src/experimental-migrations';
@@ -26,7 +25,7 @@ type Thing = Infer<typeof things>;
 type ThingInsert = Infer<typeof things, 'insert'>;
 
 const thing = (overrides: Partial<ThingInsert> = {}): ThingInsert => ({
-  day: r.Date.parse('2026-11-14'),
+  day: Temporal.PlainDate.from('2026-11-14'),
   amount: 1.5,
   ratio: 0.25,
   count: 7,
@@ -55,7 +54,7 @@ suite('primitive types', (fresh) => {
       huge: HUGE,
       label: 'Hello',
       code: 'abcdefgh',
-      meta: { huge: HUGE, day: r.Date.parse('2024-02-29'), blob: new Uint8Array([9, 8]), active: true },
+      meta: { huge: HUGE, day: Temporal.PlainDate.from('2024-02-29'), blob: new Uint8Array([9, 8]), active: true },
     });
 
     const [inserted] = await into(things).values(row).insert(db);
@@ -65,7 +64,7 @@ suite('primitive types', (fresh) => {
   });
 
   test('round-trip every type through a collect', async () => {
-    const meta = { huge: HUGE, day: r.Date.parse('2024-02-29'), blob: new Uint8Array([9, 8]), active: true };
+    const meta = { huge: HUGE, day: Temporal.PlainDate.from('2024-02-29'), blob: new Uint8Array([9, 8]), active: true };
     const inserted = await into(things).values([
       thing({ blob: new Uint8Array([0, 1, 255]), flag: true, price: 12.34, huge: HUGE, label: 'Hello', code: 'abcdefgh', meta }),
       thing(),
@@ -110,7 +109,7 @@ suite('primitive types', (fresh) => {
     });
 
     test('IS TRUE and IS FALSE on nested fields', async () => {
-      const meta = { huge: 1n, day: r.Date.parse('2026-11-14'), blob: new Uint8Array() };
+      const meta = { huge: 1n, day: Temporal.PlainDate.from('2026-11-14'), blob: new Uint8Array() };
       await into(things).values([thing({ meta: { ...meta, active: true } }), thing({ meta: { ...meta, active: false } })]).insert(db);
 
       expect(await from(things).where(things.meta.active, 'IS', true).select({ active: things.meta.active }).all(db)).toEqual([{ active: true }]);
@@ -149,34 +148,34 @@ suite('primitive types', (fresh) => {
 
   describe('t.date()', () => {
     test('orders by date', async () => {
-      await into(things).values([thing({ day: r.Date.parse('2026-11-14') }), thing({ day: r.Date.parse('2025-01-31') })]).insert(db);
+      await into(things).values([thing({ day: Temporal.PlainDate.from('2026-11-14') }), thing({ day: Temporal.PlainDate.from('2025-01-31') })]).insert(db);
 
       const rows = await from(things).orderBy([things.day]).select({ day: things.day }).all(db);
 
-      expect(rows).toEqual([{ day: r.Date.parse('2025-01-31') }, { day: r.Date.parse('2026-11-14') }]);
+      expect(rows).toEqual([{ day: Temporal.PlainDate.from('2025-01-31') }, { day: Temporal.PlainDate.from('2026-11-14') }]);
     });
 
     test('rejects impossible dates', async () => {
       await expect(into(things).values(thing({ day: '2026-02-30' })).insert(db)).rejects.toThrow();
     });
 
-    test('takes ISO strings, reading them back as r.Date', async () => {
+    test('takes ISO strings, reading them back as Temporal.PlainDate', async () => {
       const [row] = await into(things).values(thing({ day: '2024-02-29' })).insert(db, { returning: ['day'] });
 
-      expect(row).toEqual({ day: r.Date.parse('2024-02-29') });
-      expect(row!.day).toBeInstanceOf(r.Date);
+      expect(row).toEqual({ day: Temporal.PlainDate.from('2024-02-29') });
+      expect(row!.day).toBeInstanceOf(Temporal.PlainDate);
     });
 
-    test('compares with r.Date values', async () => {
-      await into(things).values([thing({ day: r.Date.parse('2026-11-14') }), thing({ day: r.Date.parse('2025-01-31') })]).insert(db);
+    test('compares with Temporal.PlainDate values', async () => {
+      await into(things).values([thing({ day: Temporal.PlainDate.from('2026-11-14') }), thing({ day: Temporal.PlainDate.from('2025-01-31') })]).insert(db);
 
-      const rows = await from(things).where(things.day, '>', r.Date.parse('2026-01-01')).select({ day: things.day }).all(db);
+      const rows = await from(things).where(things.day, '>', Temporal.PlainDate.from('2026-01-01')).select({ day: things.day }).all(db);
 
-      expect(rows).toEqual([{ day: r.Date.parse('2026-11-14') }]);
+      expect(rows).toEqual([{ day: Temporal.PlainDate.from('2026-11-14') }]);
     });
 
     test('rejects date-times', async () => {
-      await expect(into(things).values(thing({ day: r.nowUTC() as never })).insert(db)).rejects.toThrow();
+      await expect(into(things).values(thing({ day: Temporal.Now.instant() as never })).insert(db)).rejects.toThrow();
     });
   });
 
@@ -202,12 +201,12 @@ suite('primitive types', (fresh) => {
 
   describe('embedded fields', () => {
     test('can be bigints, dates and binaries', async () => {
-      const meta = { huge: HUGE, day: r.Date.parse('2026-11-14'), blob: new Uint8Array([1, 2, 3]), active: false };
+      const meta = { huge: HUGE, day: Temporal.PlainDate.from('2026-11-14'), blob: new Uint8Array([1, 2, 3]), active: false };
       await into(things).values([thing({ meta }), thing({ meta: { ...meta, huge: 1n } })]).insert(db);
 
       const rows = await from(things).where(things.meta.huge, '=', HUGE).select({ meta: things.meta, day: things.meta.day }).all(db);
 
-      expect(rows).toEqual([{ meta, day: r.Date.parse('2026-11-14') }]);
+      expect(rows).toEqual([{ meta, day: Temporal.PlainDate.from('2026-11-14') }]);
     });
   });
 });
@@ -220,7 +219,7 @@ assert<Equals<Thing, {
   seq: number;
   blob: Bytes | null;
   flag: boolean;
-  day: r.Date;
+  day: Temporal.PlainDate;
   amount: number;
   price: number | null;
   ratio: number;
@@ -230,7 +229,7 @@ assert<Equals<Thing, {
   code: string | null;
   body: string;
   doc: { a: number[] };
-  meta: { huge: bigint; day: r.Date; blob: Bytes; active: boolean } | null;
+  meta: { huge: bigint; day: Temporal.PlainDate; blob: Bytes; active: boolean } | null;
 }>>();
 
 // sequences are generated, so they're neither inserted nor updated
@@ -250,7 +249,7 @@ export const typeChecks = async (db: Database) => {
   // @ts-expect-error bigints take bigints, not numbers
   from(things).where(things.huge, '>', 1);
 
-  // @ts-expect-error dates are r.Date, or ISO strings, not native Dates
+  // @ts-expect-error dates are Temporal.PlainDate, or ISO strings, not native Dates
   into(things).values(thing({ day: new Date() }));
 
   // `IS` and `IS NOT` take booleans for booleans, and null for nullable values

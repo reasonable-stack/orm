@@ -1,5 +1,4 @@
 import { beforeEach, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, from, into } from '../src';
 import { type Task, minutesAgo, minutesFromNow, task, tasks } from './fixtures';
 import { type Database, type Equals, assert, suite } from './helpers';
@@ -18,7 +17,7 @@ suite('update', (fresh) => {
     ]).insert(db)) as [Task, Task];
   });
 
-  const query = () => from(tasks).where(tasks.scheduledTo, '<', r.nowUTC());
+  const query = () => from(tasks).where(tasks.scheduledTo, '<', Temporal.Now.instant());
 
   test('sets and increments the matching rows', async () => {
     await query().update(db, { set: { status: 'running' }, inc: { attempts: 1 } });

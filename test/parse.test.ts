@@ -1,11 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { parse } from '../src';
 import { type TaskInsert, type UserInsert, jane, tasks, users } from './fixtures';
 
 describe('parse', () => {
   test('returns a row ready to insert', () => {
-    const scheduledTo = r.nowUTC();
+    const scheduledTo = Temporal.Now.instant();
     const row: TaskInsert = parse(tasks, {
       status: 'scheduled',
       payload: { kind: 'Prune' },
@@ -25,7 +24,7 @@ describe('parse', () => {
 
     expect(row.payload.params).toEqual({});
     expect(row.events[0]).toMatchObject({ kind: 'scheduled', data: {} });
-    expect(row.events[0]!.timestamp).toBeInstanceOf(r.DateTime);
+    expect(row.events[0]!.timestamp).toBeInstanceOf(Temporal.Instant);
   });
 
   test('takes untrusted input', () => {

@@ -1,5 +1,4 @@
 import { beforeEach, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { from, into } from '../src';
 import { type User, jane, users } from './fixtures';
 import { type Database, type Equals, assert, suite } from './helpers';
@@ -52,7 +51,7 @@ suite('insert on conflict', (fresh) => {
   });
 
   test('replaces columns of the existing row with the inserted ones', async () => {
-    const lastLoggedInAt = r.DateTime.parse('2026-11-14T00:00:00.000Z');
+    const lastLoggedInAt = Temporal.Instant.from('2026-11-14T00:00:00.000Z');
     const [updated] = await into(users)
       .values({ ...jane, name: 'Jane Doe 3', lastLoggedInAt })
       .insert(db, {

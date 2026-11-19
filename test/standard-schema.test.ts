@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import * as std from '../src/standard-schema';
 
 const ok = (schema: std.Schema, input: unknown) => expect(std.parse(schema, input)).toEqual({ value: input });
@@ -20,22 +19,24 @@ describe('standard-schema', () => {
     ko(std.integer(), 2 ** 53);
   });
 
-  test('dateTime coerces ISO strings and epoch milliseconds', () => {
-    ok(std.dateTime(), r.DateTime.parse('2026-11-12T00:00:00Z'));
-    expect(std.parse(std.dateTime(), '2026-11-12T00:00:00-03:00')).toEqual({ value: r.DateTime.parse('2026-11-12T00:00:00-03:00') });
-    expect(std.parse(std.dateTime(), 0)).toEqual({ value: r.DateTime.parse(0) });
-    ko(std.dateTime(), 'yesterday');
-    ko(std.dateTime(), '2026-11-12T00:00:00');
-    ko(std.dateTime(), 1.5);
-    ko(std.dateTime(), new Date());
+  test('instant coerces ISO strings and epoch milliseconds, to the millisecond', () => {
+    ok(std.instant(), Temporal.Instant.from('2026-11-12T00:00:00Z'));
+    expect(std.parse(std.instant(), '2026-11-12T00:00:00-03:00')).toEqual({ value: Temporal.Instant.from('2026-11-12T00:00:00-03:00') });
+    expect(std.parse(std.instant(), 0)).toEqual({ value: Temporal.Instant.fromEpochMilliseconds(0) });
+    expect(std.parse(std.instant(), Temporal.Instant.fromEpochNanoseconds(1_999_999n))).toEqual({ value: Temporal.Instant.fromEpochMilliseconds(1) });
+    expect(std.parse(std.instant(), '1970-01-01T00:00:00.001999Z')).toEqual({ value: Temporal.Instant.fromEpochMilliseconds(1) });
+    ko(std.instant(), 'yesterday');
+    ko(std.instant(), '2026-11-12T00:00:00');
+    ko(std.instant(), 1.5);
+    ko(std.instant(), new Date());
   });
 
   test('date coerces ISO strings, rejecting impossible dates', () => {
-    ok(std.date(), r.Date.parse('2024-02-29'));
-    expect(std.parse(std.date(), '2024-02-29')).toEqual({ value: r.Date.parse('2024-02-29') });
+    ok(std.date(), Temporal.PlainDate.from('2024-02-29'));
+    expect(std.parse(std.date(), '2024-02-29')).toEqual({ value: Temporal.PlainDate.from('2024-02-29') });
     ko(std.date(), '2026-02-29');
     ko(std.date(), '2026-1-1');
-    ko(std.date(), r.DateTime.parse(0));
+    ko(std.date(), Temporal.Instant.fromEpochMilliseconds(0));
     ko(std.date(), new Date());
   });
 

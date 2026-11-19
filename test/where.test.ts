@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { exp, f, from, into } from '../src';
 import { type Task, minutesAgo, minutesFromNow, task, tasks, users } from './fixtures';
 import { type Database, assert, type Equals, suite } from './helpers';
@@ -62,7 +61,7 @@ suite('where', (fresh) => {
     });
 
     test('compares dates', async () => {
-      expect(await ids(from(tasks).where(tasks.scheduledTo, '<', r.nowUTC()).all(db))).toEqual(idsOf(0, 3));
+      expect(await ids(from(tasks).where(tasks.scheduledTo, '<', Temporal.Now.instant()).all(db))).toEqual(idsOf(0, 3));
     });
 
     test('ILIKE and NOT ILIKE', async () => {
@@ -85,7 +84,7 @@ suite('where', (fresh) => {
     test('BETWEEN and NOT BETWEEN, bounds included', async () => {
       expect(await ids(from(tasks).where(tasks.attempts, 'BETWEEN', [1, 3]).all(db))).toEqual(idsOf(1, 2, 3));
       expect(await ids(from(tasks).where(tasks.attempts, 'NOT BETWEEN', [1, 3]).all(db))).toEqual(idsOf(0));
-      expect(await ids(from(tasks).where(tasks.scheduledTo, 'BETWEEN', [minutesAgo(2), r.nowUTC()]).all(db))).toEqual(idsOf(0, 3));
+      expect(await ids(from(tasks).where(tasks.scheduledTo, 'BETWEEN', [minutesAgo(2), Temporal.Now.instant()]).all(db))).toEqual(idsOf(0, 3));
     });
 
     test('IS DISTINCT FROM and IS NOT DISTINCT FROM treat nulls as values', async () => {
@@ -111,7 +110,7 @@ suite('where', (fresh) => {
   test('ANDs every where together', async () => {
     const query = from(tasks)
       .where(tasks.status, '=', 'scheduled')
-      .where(tasks.scheduledTo, '<', r.nowUTC());
+      .where(tasks.scheduledTo, '<', Temporal.Now.instant());
 
     expect(await ids(query.all(db))).toEqual(idsOf(0));
     expect(await query.exists(db)).toBe(true);
@@ -120,7 +119,7 @@ suite('where', (fresh) => {
   test('exp.and ANDs expressions together', async () => {
     const query = from(tasks).where(exp.and([
       exp(tasks.status, '=', 'scheduled'),
-      exp(tasks.scheduledTo, '<', r.nowUTC()),
+      exp(tasks.scheduledTo, '<', Temporal.Now.instant()),
     ]));
 
     expect(await ids(query.all(db))).toEqual(idsOf(0));
@@ -130,7 +129,7 @@ suite('where', (fresh) => {
     const query = from(tasks).where(exp.or([
       exp.and([
         exp(tasks.status, '=', 'scheduled'),
-        exp(tasks.scheduledTo, '<', r.nowUTC()),
+        exp(tasks.scheduledTo, '<', Temporal.Now.instant()),
       ]),
       exp(tasks.status, '=', 'queued'),
     ]));
@@ -178,7 +177,7 @@ export const typeChecks = async (db: Database) => {
   assert<Equals<typeof d1, boolean>>();
 
   from(tasks).where(exp.or([
-    exp.and([exp(tasks.status, '=', 'scheduled'), exp(tasks.scheduledTo, '<', r.nowUTC())]),
+    exp.and([exp(tasks.status, '=', 'scheduled'), exp(tasks.scheduledTo, '<', Temporal.Now.instant())]),
     exp(tasks.parentId, 'IS', null),
   ]));
 
@@ -216,7 +215,7 @@ export const typeChecks = async (db: Database) => {
 
   from(tasks).where(exp.or([
     exp(tasks.status, 'IN', ['queued', 'running']),
-    exp(tasks.scheduledTo, 'BETWEEN', [r.DateTime.parse(0), r.nowUTC()]),
+    exp(tasks.scheduledTo, 'BETWEEN', [Temporal.Instant.fromEpochMilliseconds(0), Temporal.Now.instant()]),
     exp(tasks.parentId, 'IS DISTINCT FROM', tasks.id),
   ]));
 

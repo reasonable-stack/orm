@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import * as r from '@reasonable-stack/datetime';
 import { table, t } from '../src';
 import { type EventKind, type Status, type Task, type TaskInsert, type TaskUpdate, type User, type UserInsert, type UserUpdate, tasks, users } from './fixtures';
 import { type Equals, type OptionalKeys, type RequiredKeys, assert } from './helpers';
@@ -72,10 +71,10 @@ assert<Equals<Task, {
   attempts: number;
   maxAttempts: number;
   payload: { kind: string; params: Record<string, unknown> };
-  events: { kind: EventKind; data: Record<string, unknown>; timestamp: r.DateTime }[];
-  createdAt: r.DateTime;
-  updatedAt: r.DateTime;
-  scheduledTo: r.DateTime;
+  events: { kind: EventKind; data: Record<string, unknown>; timestamp: Temporal.Instant }[];
+  createdAt: Temporal.Instant;
+  updatedAt: Temporal.Instant;
+  scheduledTo: Temporal.Instant;
 }>>();
 
 assert<Equals<User, {
@@ -83,9 +82,9 @@ assert<Equals<User, {
   name: string;
   email: string;
   logins: number;
-  createdAt: r.DateTime;
-  updatedAt: r.DateTime;
-  lastLoggedInAt: r.DateTime | null;
+  createdAt: Temporal.Instant;
+  updatedAt: Temporal.Instant;
+  lastLoggedInAt: Temporal.Instant | null;
 }>>();
 
 // inserts require columns with neither a default nor `nullable()`, and leave generated ones out

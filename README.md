@@ -6,7 +6,6 @@ It's a type-safe query builder for [Bun](https://bun.sh), with adapters for
 SQLite and PostgreSQL.
 
 ```ts
-import * as r from '@reasonable-stack/datetime';
 import { from, into, table, t } from '@reasonable-stack/orm';
 import * as sqlite from '@reasonable-stack/orm/bun-sqlite';
 import { create } from '@reasonable-stack/orm/experimental-migrations';
@@ -15,7 +14,7 @@ const users = table('users', {
   id: t.uuidv7().generated().primaryKey(),
   name: t.string(),
   email: t.citext().unique(),
-  createdAt: t.timestamp().default(() => r.nowUTC()),
+  createdAt: t.timestamp().default(() => Temporal.Now.instant()),
 });
 
 const db = sqlite.connect('./db.sqlite');
@@ -66,13 +65,12 @@ const jane = await from(users)
 ## Install
 
 ```sh
-bun add @reasonable-stack/orm @reasonable-stack/datetime
+bun add @reasonable-stack/orm
 ```
 
-Requires Bun 1.4.4 or later, and TypeScript 5.4 or later.
-[`@reasonable-stack/datetime`](https://github.com/reasonable-stack/datetime)
-(0.2.0 or later) is a peer dependency: timestamps and dates are read as its
-`r.DateTime` and `r.Date`.
+Requires Bun 1.4.4 or later, which ships `Temporal`: timestamps are read as
+`Temporal.Instant`s, and dates as `Temporal.PlainDate`s. Types need TypeScript
+6.0 or later, with `Temporal` in `lib` (e.g. `"lib": ["ESNext"]`).
 
 
 ## Connecting
@@ -97,7 +95,6 @@ methods.
 ## Tables
 
 ```ts
-import * as r from '@reasonable-stack/datetime';
 import { embedded, table, t, type Infer } from '@reasonable-stack/orm';
 
 const tasks = table('tasks', {
@@ -112,9 +109,9 @@ const tasks = table('tasks', {
   }),
   events: embedded.many({
     kind: t.string(),
-    timestamp: t.timestamp().default(() => r.nowUTC()),
+    timestamp: t.timestamp().default(() => Temporal.Now.instant()),
   }),
-  scheduledTo: t.timestamp().default(() => r.nowUTC()),
+  scheduledTo: t.timestamp().default(() => Temporal.Now.instant()),
 });
 
 const users = table('users', {
@@ -122,7 +119,7 @@ const users = table('users', {
   name: t.string(),
   email: t.citext().unique(),
   logins: t.integer().unsigned().default(0),
-  createdAt: t.timestamp().default(() => r.nowUTC()),
+  createdAt: t.timestamp().default(() => Temporal.Now.instant()),
   lastLoggedInAt: t.timestamp().nullable(),
 });
 
@@ -140,7 +137,7 @@ Keys are camelCase in TypeScript and snake_case in the database
 | `t.binary()`                       | `Uint8Array`              | `BYTEA`            | `BLOB`                  |
 | `t.boolean()`                      | `boolean`                 | `BOOLEAN`          | `INTEGER`               |
 | `t.citext()`                       | `string`                  | `CITEXT`           | `TEXT COLLATE NOCASE`   |
-| `t.date()`                         | `r.Date`                  | `DATE`             | `TEXT`                  |
+| `t.date()`                         | `Temporal.PlainDate`      | `DATE`             | `TEXT`                  |
 | `t.decimal({ precision, scale }?)` | `number`                  | `NUMERIC(p, s)`    | `NUMERIC`               |
 | `t.enum([...values])`              | union of values           | `VARCHAR(n)`       | `TEXT`                  |
 | `t.float()`                        | `number`                  | `DOUBLE PRECISION` | `REAL`                  |
@@ -150,7 +147,7 @@ Keys are camelCase in TypeScript and snake_case in the database
 | `t.sequence()`                     | `number`                  | `BIGINT` identity  | `INTEGER` autoincrement |
 | `t.string({ size? })`              | `string`                  | `VARCHAR(size)`    | `TEXT`                  |
 | `t.text()`                         | `string`                  | `TEXT`             | `TEXT`                  |
-| `t.timestamp()`                    | `r.DateTime`              | `TIMESTAMPTZ`      | `INTEGER`               |
+| `t.timestamp()`                    | `Temporal.Instant`        | `TIMESTAMPTZ`      | `INTEGER`               |
 | `t.uuidv7()`                       | `string`                  | `UUID`             | `TEXT`                  |
 | `embedded.one({ ... })`            | an object                 | `JSONB`            | `TEXT`                  |
 | `embedded.many({ ... })`           | an array of objects       | `JSONB`            | `TEXT`                  |
@@ -164,14 +161,14 @@ Keys are camelCase in TypeScript and snake_case in the database
 | `.generated()`  | a UUIDv7 generated on insert (`t.uuidv7()`)   |
 | `.unsigned()`   | rejects negatives (`t.integer()`)             |
 
-`t.timestamp()` values are `r.DateTime`s from
-[`@reasonable-stack/datetime`](https://github.com/reasonable-stack/datetime),
-always stored and read back in UTC, whatever offset they were written with
+`t.timestamp()` values are `Temporal.Instant`s, to the millisecond: finer
+ones (`Temporal.Now.instant()` has microseconds) are truncated on the way in,
+so that every database reads back the same values. They're stored in UTC
 (including those interpolated into a fragment, or nested in an embedded
-document), so the database's time zone never matters. They also
-take ISO 8601 strings with an offset (`'2026-11-14T09:00:00-03:00'`) and epoch
-milliseconds, but not native `Date`s. `t.date()` values are `r.Date`s, and
-also take `YYYY-MM-DD` strings.
+document), so the database's time zone never matters. They also take ISO 8601
+strings with an offset (`'2026-11-14T09:00:00-03:00'`) and epoch milliseconds,
+but not native `Date`s. `t.date()` values are `Temporal.PlainDate`s, and also
+take `YYYY-MM-DD` strings.
 
 `t.string()` holds up to 255 characters unless given a `size`, and
 `t.enum()`'s `n` is the length of its longest value. `t.sequence()` can only
@@ -342,7 +339,7 @@ await into(users).values(rows).insert(db, {
   conflict: {
     on: ['email'],
     do: {
-      set: { lastLoggedInAt: r.nowUTC() }, // a given value
+      set: { lastLoggedInAt: Temporal.Now.instant() }, // a given value
       inc: { logins: 1 },                  // an increment
       replace: ['name'],                   // the value being inserted
     },
@@ -361,12 +358,11 @@ await into(users).values(rows).insert(db, {
 A table is shaped like its columns: `tasks.status` references a column.
 
 ```ts
-import * as r from '@reasonable-stack/datetime';
 import { exp, from } from '@reasonable-stack/orm';
 
 const due: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
-  .where(tasks.scheduledTo, '<', r.nowUTC()) // multiple `where`s are ANDed
+  .where(tasks.scheduledTo, '<', Temporal.Now.instant()) // multiple `where`s are ANDed
   .orderBy([tasks.scheduledTo, exp.desc(tasks.attempts)])
   .limit(10)
   .offset(20)
@@ -409,12 +405,12 @@ await from(users).orderBy([exp.descNullLast(users.lastLoggedInAt)]).all(db);
 | `'IS'` `'IS NOT'`                             | `null` (nullable columns), `true` or `false` (booleans) |
 
 ```ts
-const lastWeek = r.nowUTC().sub(r.days(7));
+const lastWeek = Temporal.Now.instant().subtract({ hours: 7 * 24 });
 
 await from(tasks).where(tasks.status, 'IN', ['scheduled', 'running']).all(db);
 await from(tasks).where(tasks.status, 'NOT IN', ['succeeded']).all(db);
 
-await from(tasks).where(tasks.scheduledTo, 'BETWEEN', [lastWeek, r.nowUTC()]).all(db);
+await from(tasks).where(tasks.scheduledTo, 'BETWEEN', [lastWeek, Temporal.Now.instant()]).all(db);
 await from(tasks).where(tasks.attempts, 'NOT BETWEEN', [1, 3]).all(db);
 
 await from(tasks).where(tasks.payload.kind, 'LIKE', 'Prune%').all(db);
@@ -451,7 +447,7 @@ be used in fragments too.
 
 ```ts
 await from(tasks).select({ id: tasks.id, when: tasks.scheduledTo }).all(db);
-// → { id: string, when: r.DateTime }[]
+// → { id: string, when: Temporal.Instant }[]
 
 await from(tasks).select({ ...tasks, parent: tasks.parentId }).all(db);
 // → (Task & { parent: string | null })[]
@@ -486,9 +482,9 @@ can be columns or plain values of the first one's type:
 
 ```ts
 await from(users).select({ seen: exp.coalesce(users.lastLoggedInAt, users.createdAt) }).all(db);
-// → { seen: r.DateTime }[]
+// → { seen: Temporal.Instant }[]
 
-await from(users).where(exp.coalesce(users.lastLoggedInAt, r.DateTime.parse(0)), '<', lastWeek).all(db);
+await from(users).where(exp.coalesce(users.lastLoggedInAt, Temporal.Instant.fromEpochMilliseconds(0)), '<', lastWeek).all(db);
 ```
 
 It reads null only when every one of its operands may.
@@ -563,7 +559,7 @@ await from(tasks)
   .all(db);
 // → { doubled: number, retried: boolean, retries: number | null }[]
 
-await from(tasks).where(f`${tasks.scheduledTo}`.as(t.timestamp()), '<', r.nowUTC()).all(db);
+await from(tasks).where(f`${tasks.scheduledTo}`.as(t.timestamp()), '<', Temporal.Now.instant()).all(db);
 ```
 
 
@@ -621,7 +617,7 @@ await from(tasks)
   .having(exp.max(tasks.scheduledTo), '<', lastWeek)
   .select({ kind: tasks.payload.kind, latest: exp.max(tasks.scheduledTo) })
   .all(db);
-// → { kind: string, latest: r.DateTime }[]
+// → { kind: string, latest: Temporal.Instant }[]
 ```
 
 It also takes the keys of the projection, which read as whatever is selected
