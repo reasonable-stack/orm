@@ -9,6 +9,7 @@ export {
   type ILogger,
   type Infer,
   type Operand,
+  type Ordering,
   type Primitive,
   type Row,
   type Table,

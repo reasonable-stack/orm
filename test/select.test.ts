@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import * as r from '@reasonable-stack/datetime';
-import { from, into } from '../src';
+import { exp, from, into } from '../src';
 import { type Status, type Task, jane, minutesAgo, minutesFromNow, task, tasks, users } from './fixtures';
 import { type Database, type Equals, type Expand, assert, suite } from './helpers';
 
@@ -99,24 +99,51 @@ suite('select', (fresh) => {
     });
 
     test('orders descending', async () => {
-      const ordered = await from(tasks).orderBy([[tasks.scheduledTo, 'DESC']]).all(db);
+      const ordered = await from(tasks).orderBy([exp.desc(tasks.scheduledTo)]).all(db);
 
       expect(ordered).toEqual([rows[3]!, rows[1]!, rows[2]!, rows[0]!]);
     });
 
-    test('puts nulls first or last, as told', async () => {
-      await into(users).values([jane, { name: 'John Doe', email: 'john.doe@example.com', lastLoggedInAt: minutesAgo(1) }]).insert(db);
-      const names = async (direction: 'ASC NULLS FIRST' | 'ASC NULLS LAST' | 'DESC NULLS FIRST' | 'DESC NULLS LAST') =>
-        (await from(users).orderBy([[users.lastLoggedInAt, direction]]).select({ name: users.name }).all(db)).map(row => row.name);
+    test('orders ascending, as plain operands do', async () => {
+      const ordered = await from(tasks).orderBy([exp.asc(tasks.scheduledTo)]).all(db);
 
-      expect(await names('ASC NULLS FIRST')).toEqual(['Jane Doe', 'John Doe']);
-      expect(await names('ASC NULLS LAST')).toEqual(['John Doe', 'Jane Doe']);
-      expect(await names('DESC NULLS FIRST')).toEqual(['Jane Doe', 'John Doe']);
-      expect(await names('DESC NULLS LAST')).toEqual(['John Doe', 'Jane Doe']);
+      expect(ordered).toEqual(await from(tasks).orderBy([tasks.scheduledTo]).all(db));
+      expect(ordered).toEqual([rows[0]!, rows[2]!, rows[1]!, rows[3]!]);
     });
 
-    test('refuses unknown directions', () => {
-      expect(() => from(tasks).orderBy([[tasks.createdAt, 'ASC; DROP TABLE tasks' as never]])).toThrow('Unknown direction "ASC; DROP TABLE tasks"');
+    test('mixes directions', async () => {
+      const ordered = await from(tasks).orderBy([tasks.status, exp.desc(tasks.scheduledTo)]).all(db);
+
+      expect(ordered.map(row => row.id)).toEqual([rows[1]!.id, rows[2]!.id, rows[3]!.id, rows[0]!.id]);
+    });
+
+    test('puts nulls first or last, as told', async () => {
+      await into(users).values([jane, { name: 'John Doe', email: 'john.doe@example.com', lastLoggedInAt: minutesAgo(1) }]).insert(db);
+      const names = async (order: typeof exp.asc) =>
+        (await from(users).orderBy([order(users.lastLoggedInAt)]).select({ name: users.name }).all(db)).map(row => row.name);
+
+      expect(await names(exp.ascNullFirst)).toEqual(['Jane Doe', 'John Doe']);
+      expect(await names(exp.ascNullLast)).toEqual(['John Doe', 'Jane Doe']);
+      expect(await names(exp.descNullFirst)).toEqual(['Jane Doe', 'John Doe']);
+      expect(await names(exp.descNullLast)).toEqual(['John Doe', 'Jane Doe']);
+    });
+
+    test('renders the direction asked for', async () => {
+      const sql = async (order: typeof exp.asc) => {
+        await from(users).orderBy([order(users.lastLoggedInAt)]).all(db);
+        return sqls.at(-1);
+      };
+
+      expect(await sql(exp.asc)).toEndWith(' ORDER BY "users"."last_logged_in_at" ASC');
+      expect(await sql(exp.ascNullFirst)).toEndWith(' ORDER BY "users"."last_logged_in_at" ASC NULLS FIRST');
+      expect(await sql(exp.ascNullLast)).toEndWith(' ORDER BY "users"."last_logged_in_at" ASC NULLS LAST');
+      expect(await sql(exp.desc)).toEndWith(' ORDER BY "users"."last_logged_in_at" DESC');
+      expect(await sql(exp.descNullFirst)).toEndWith(' ORDER BY "users"."last_logged_in_at" DESC NULLS FIRST');
+      expect(await sql(exp.descNullLast)).toEndWith(' ORDER BY "users"."last_logged_in_at" DESC NULLS LAST');
+    });
+
+    test('refuses anything but operands and their directions', () => {
+      expect(() => from(tasks).orderBy([[tasks.createdAt, 'DESC'] as never])).toThrow('orderBy takes operands, or exp.asc(), exp.desc() and their variants of one');
     });
   });
 
@@ -219,8 +246,14 @@ export const typeChecks = async (db: Database) => {
   // @ts-expect-error orderBy takes references to the query's table only
   from(tasks).orderBy([users.createdAt]);
 
-  from(tasks).orderBy([[tasks.createdAt, 'DESC NULLS LAST']]);
+  from(tasks).orderBy([tasks.status, exp.descNullLast(tasks.createdAt)]);
 
-  // @ts-expect-error orderBy directions are ASC or DESC, optionally with NULLS FIRST or LAST
-  from(tasks).orderBy([[tasks.createdAt, 'UP']]);
+  // @ts-expect-error a direction takes references to the query's tables only, too
+  from(tasks).orderBy([exp.desc(users.createdAt)]);
+
+  // @ts-expect-error directions are given with exp.asc() and exp.desc(), not tuples
+  from(tasks).orderBy([[tasks.createdAt, 'DESC']]);
+
+  // @ts-expect-error a direction isn't a value to select
+  from(tasks).select({ at: exp.desc(tasks.createdAt) });
 };

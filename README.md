@@ -363,7 +363,7 @@ import { exp, from } from '@reasonable-stack/orm';
 const due: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
   .where(tasks.scheduledTo, '<', r.nowUTC()) // multiple `where`s are ANDed
-  .orderBy([tasks.scheduledTo, [tasks.attempts, 'DESC']])
+  .orderBy([tasks.scheduledTo, exp.desc(tasks.attempts)])
   .limit(10)
   .offset(20)
   .all(db);
@@ -375,12 +375,23 @@ await scheduled.exists(db); // → boolean
 await scheduled.count(db);  // → number
 ```
 
-Where nulls go when ordering differs between databases: last when
-ascending on postgres, first on sqlite. Say where to put them, to read the
-same rows on both:
+`orderBy` orders by an operand ascending, unless it's given in a direction:
+
+| direction                    | SQL                |
+| :--------------------------- | :----------------- |
+| `exp.asc(operand)`           | `ASC`              |
+| `exp.ascNullFirst(operand)`  | `ASC NULLS FIRST`  |
+| `exp.ascNullLast(operand)`   | `ASC NULLS LAST`   |
+| `exp.desc(operand)`          | `DESC`             |
+| `exp.descNullFirst(operand)` | `DESC NULLS FIRST` |
+| `exp.descNullLast(operand)`  | `DESC NULLS LAST`  |
+
+Where nulls go otherwise differs between databases: last when ascending on
+postgres, first on sqlite. Say where to put them, to read the same rows on
+both:
 
 ```ts
-await from(users).orderBy([[users.lastLoggedInAt, 'DESC NULLS LAST']]).all(db);
+await from(users).orderBy([exp.descNullLast(users.lastLoggedInAt)]).all(db);
 ```
 
 | operator                                      | value                                                   |

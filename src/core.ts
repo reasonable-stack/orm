@@ -219,11 +219,13 @@ const NAME = Symbol('orm.name');
 const ALIAS = Symbol('orm.alias');
 const WHOLE = Symbol('orm.whole');
 const NODE = Symbol('orm.node');
+const ORDER = Symbol('orm.order');
 declare const COLUMNS: unique symbol;
 declare const OPERAND: unique symbol;
 declare const KEY: unique symbol;
 declare const FRAGMENT: unique symbol;
 declare const EMPTY: unique symbol;
+declare const ORDERED: unique symbol;
 
 type Op =
   | '=' | '!=' | '<' | '<=' | '>' | '>='
@@ -907,6 +909,22 @@ const collect: Collect = (source: Table | Record<string, Operand>) => {
   return operand({ kind: 'collect', fields, filter }) as never;
 };
 
+// where nulls go is up to the database unless said: last ascending on
+// postgres, first on sqlite
+type Direction = 'ASC' | 'DESC' | 'ASC NULLS FIRST' | 'ASC NULLS LAST' | 'DESC NULLS FIRST' | 'DESC NULLS LAST';
+
+// an operand to order by, in a direction. It isn't an operand itself, so
+// it only goes in an `orderBy`
+type Ordering<A extends string = string> = {
+  readonly [ORDER]: { node: Node; direction: Direction };
+  readonly [ORDERED]: A; // type only
+};
+
+const isOrdering = (value: unknown): value is Ordering => typeof value === 'object' && value !== null && ORDER in value;
+
+const order = (direction: Direction) => <O extends Operand>(operand: O) =>
+  ({ [ORDER]: { node: operand[NODE], direction } }) as unknown as Ordering<AliasesOf<O>>;
+
 // aggregates: a sum of no rows is 0, rather than SQL's null, and so is a
 // count; a collect of no rows is an empty list. `distinct` counts (or sums)
 // each value once
@@ -922,6 +940,12 @@ const exp = Object.assign(expOf, {
   max: call('MAX') as Picked,
   avg: call('AVG') as Averaged,
   collect,
+  asc: order('ASC'),
+  ascNullFirst: order('ASC NULLS FIRST'),
+  ascNullLast: order('ASC NULLS LAST'),
+  desc: order('DESC'),
+  descNullFirst: order('DESC NULLS FIRST'),
+  descNullLast: order('DESC NULLS LAST'),
 });
 
 // a fragment of raw SQL: interpolated operands are rendered in place, and
@@ -1139,11 +1163,6 @@ class InsertBuilder<T extends Table> {
 const into = <T extends Table>(table: T) => new InsertBuilder(assertWhole(table, '"into"') as T);
 
 // ─── query ───────────────────────────────────────────────────────────────────
-
-// where nulls go is up to the database unless said: last ascending on
-// postgres, first on sqlite
-const DIRECTIONS = ['ASC', 'DESC', 'ASC NULLS FIRST', 'ASC NULLS LAST', 'DESC NULLS FIRST', 'DESC NULLS LAST'] as const;
-type Direction = typeof DIRECTIONS[number];
 
 // a field is an operand read under a key of its own
 type Field = [key: string, node: Node];
@@ -1394,11 +1413,14 @@ class QueryBuilder<T extends Table, A extends string = AliasOf<T>, N extends str
     return new QueryBuilder<T, A, N, S, G, any>({ ...this.query, having: [...this.query.having, node] });
   }
 
-  orderBy(operands: (Operand<A> | [Operand<A>, Direction])[]) {
-    const orderBy = operands.map(item => {
-      const [operand, direction] = Array.isArray(item) ? item : [item, 'ASC' as const];
-      if (!DIRECTIONS.includes(direction)) raise(`Unknown direction "${direction}", expected one of ${DIRECTIONS.join(', ')}`);
-      return [assertInScope(this.query.scope, operand[NODE]), direction] as [Node, Direction];
+  // operands are ordered ascending, unless given in a direction, e.g.
+  // `exp.desc(tasks.scheduledTo)`
+  orderBy(items: (Operand<A> | Ordering<A>)[]) {
+    const orderBy = items.map((item): [Node, Direction] => {
+      const { node, direction } = isOrdering(item) ? item[ORDER]
+        : isOperand(item) ? { node: item[NODE], direction: 'ASC' as const }
+        : raise('orderBy takes operands, or exp.asc(), exp.desc() and their variants of one');
+      return [assertInScope(this.query.scope, node), direction];
     });
 
     return new QueryBuilder<T, A, N, S, G, H>({ ...this.query, orderBy: [...this.query.orderBy, ...orderBy] });
@@ -1586,6 +1608,7 @@ export {
   type ILogger,
   type Infer,
   type Operand,
+  type Ordering,
   type Primitive,
   type Row,
   type Table,

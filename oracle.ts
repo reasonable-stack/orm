@@ -293,7 +293,7 @@ const i1: {
 const j0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
   .where(tasks.scheduledTo, '<=', r.nowUTC())
-  .orderBy([tasks.status, [tasks.scheduledTo, 'DESC']])
+  .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
   .all(db);
 
 //
@@ -303,7 +303,7 @@ const j0: Task[] = await from(tasks)
 const k0: Task[] = await from(tasks)
   .where(tasks.status, '=', 'scheduled')
   .where(tasks.scheduledTo, '<=', r.nowUTC())
-  .orderBy([tasks.status, [tasks.scheduledTo, 'DESC']])
+  .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
   .limit(10)
   .offset(10)
   .all(db);

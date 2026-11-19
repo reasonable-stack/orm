@@ -227,7 +227,7 @@ suite('oracle: selects', (fresh) => {
   test('j0: orders by many columns, each ascending unless told', async () => {
     const j0: Task[] = await from(tasks)
       .where(tasks.scheduledTo, '<=', r.nowUTC())
-      .orderBy([tasks.status, [tasks.scheduledTo, 'DESC']])
+      .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
       .all(db);
 
     expect(j0).toEqual([rows[4]!, rows[2]!, rows[1]!, rows[0]!]);
@@ -235,7 +235,7 @@ suite('oracle: selects', (fresh) => {
 
   test('k0: limit and offset', async () => {
     const k0: Task[] = await from(tasks)
-      .orderBy([tasks.status, [tasks.scheduledTo, 'DESC']])
+      .orderBy([tasks.status, exp.desc(tasks.scheduledTo)])
       .limit(2)
       .offset(1)
       .all(db);
