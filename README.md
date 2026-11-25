@@ -153,15 +153,15 @@ Keys are camelCase in TypeScript and snake_case in the database
 | `embedded.one({ ... })`            | an object                 | `JSONB`            | `TEXT`                  |
 | `embedded.many({ ... })`           | an array of objects       | `JSONB`            | `TEXT`                  |
 
-| modifier         | effect                                                                               |
-| :--------------- | :----------------------------------------------------------------------------------- |
-| `.primaryKey()`  | primary key                                                                          |
-| `.nullable()`    | accepts `null`, optional on insert                                                   |
-| `.default(v)`    | value or function used when omitted on insert                                        |
-| `.unique()`      | unique constraint                                                                    |
-| `.generated()`   | a UUIDv7 generated on insert (`t.uuidv7()`)                                          |
-| `.unsigned()`    | rejects negatives (`t.integer()`)                                                    |
-| `.on(event, fn)` | set to `fn()` on every `'create'` or `'update'` (see [hooks](#hooks-and-timestamps)) |
+| modifier         | effect                                                                                        |
+| :--------------- | :-------------------------------------------------------------------------------------------- |
+| `.primaryKey()`  | primary key                                                                                   |
+| `.nullable()`    | accepts `null`, optional on insert                                                            |
+| `.default(v)`    | value or function used when omitted on insert                                                 |
+| `.unique()`      | unique constraint                                                                             |
+| `.generated()`   | a UUIDv7 generated on insert (`t.uuidv7()`)                                                   |
+| `.unsigned()`    | rejects negatives (`t.integer()`)                                                             |
+| `.on(event, fn)` | set to `fn()` on `'insert'` or `'update'` when not given (see [hooks](#hooks-and-timestamps)) |
 
 `t.timestamp()` values are `Temporal.Instant`s, to the millisecond: finer
 ones (`Temporal.Now.instant()` has microseconds) are truncated on the way in,
@@ -195,9 +195,9 @@ const contacts = table('contacts', {
 
 ### Hooks and timestamps
 
-`.on(event, fn)` sets a column to `fn()` on every insert (`'create'`) or update
-(`'update'`) of a row, an upsert's `DO UPDATE` included. A column can take a
-hook on each event:
+`.on(event, fn)` sets a column to `fn()` on every `'insert'` or `'update'` of a
+row that gives it no value of its own, an upsert's `DO UPDATE` included. A
+column can take a hook on each event:
 
 ```ts
 const now = () => Temporal.Now.instant();
@@ -205,8 +205,8 @@ const now = () => Temporal.Now.instant();
 const posts = table('posts', {
   id: t.uuidv7().generated().primaryKey(),
   title: t.string(),
-  createdAt: t.timestamp().on('create', now),
-  updatedAt: t.timestamp().on('create', now).on('update', now),
+  createdAt: t.timestamp().on('insert', now),
+  updatedAt: t.timestamp().on('insert', now).on('update', now),
 });
 ```
 
@@ -226,12 +226,10 @@ const comments = table('comments', {
 });
 ```
 
-The hook always wins: a column it sets is left out of what its event takes, so
-`createdAt` isn't part of `Infer<typeof posts, 'insert'>`, and `updatedAt`
-isn't part of `Infer<typeof posts, 'update'>` (nor of an upsert's `inc` or
-`replace`). Given one anyway, the insert or update throws, before any SQL runs.
-A hook only sets its column on its own event: `createdAt` is still part of
-what `set` takes.
+A value of the row's own wins over the hook's: given to `.values()` on insert,
+or set, incremented or replaced on update. Columns a hook sets are optional
+in what its event takes (`Infer<typeof posts, 'insert'>`), so imports and
+backfills can still set `createdAt` and `updatedAt` themselves.
 
 Hooks are called once per row, and their values are validated like any other.
 They don't count as changes: an update with nothing else to `set` or `inc`

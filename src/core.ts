@@ -25,9 +25,9 @@ type NumericType = 'BIGINT' | 'DECIMAL' | 'FLOAT' | 'INTEGER' | 'SEQUENCE';
 
 // the life-cycle events a column can be set on: inserts, and updates (an
 // upsert's `DO UPDATE` included)
-type Event = 'create' | 'update';
+type Event = 'insert' | 'update';
 
-const EVENTS: readonly Event[] = ['create', 'update'];
+const EVENTS: readonly Event[] = ['insert', 'update'];
 
 type Hooks = Partial<Record<Event, () => unknown>>;
 
@@ -91,9 +91,9 @@ class ColumnBuilder<P extends ColumnProps> {
     return new ColumnBuilder({ ...this.props, schema: std.integer({ min: 0 }) } as P);
   }
 
-  // sets the column to `fn()` on every insert (`'create'`) or update
-  // (`'update'`) of a row. The hook always wins: the column is left out of
-  // what that event takes, so it can't be given a value of its own
+  // sets the column to `fn()` on every `'insert'` or `'update'` of a row that
+  // gives it no value of its own: a value given on insert, or set,
+  // incremented or replaced on update, wins over the hook's
   on<E extends Event>(event: E, fn: () => std.output<P['schema']>) {
     if (!EVENTS.includes(event)) throw new Error(`Unknown event "${event}", columns take hooks on ${EVENTS.map(e => `"${e}"`).join(' and ')}`);
     if (this.props.hooks?.[event]) throw new Error(`The column already has a hook on "${event}"`);
@@ -146,12 +146,12 @@ const defineType = <S extends std.Schema>({ primitive, schema }: { primitive: Ex
 const timestamp = () => column({ type: 'TIMESTAMP', schema: std.instant() });
 
 const now = () => Temporal.Now.instant();
-const createdAt = () => timestamp().on('create', now);
-const updatedAt = () => timestamp().on('create', now).on('update', now);
+const createdAt = () => timestamp().on('insert', now);
+const updatedAt = () => timestamp().on('insert', now).on('update', now);
 
 // when a row was inserted, and when it was last inserted or updated, under
 // keys of the caller's choosing
-const timestamps = <C extends string = 'createdAt', U extends string = 'updatedAt'>(
+const timestamps = <const C extends string = 'createdAt', const U extends string = 'updatedAt'>(
   { createdAt: created = 'createdAt' as C, updatedAt: updated = 'updatedAt' as U }: { createdAt?: C, updatedAt?: U } = {},
 ) => {
   if ((created as string) === updated) throw new Error(`Timestamps take two keys, got "${created}" for both`);
@@ -251,15 +251,10 @@ const validate = (cols: Columns, value: unknown, options: { partial?: boolean } 
 
 const isHooked = (col: Column, event: Event) => col.hooks?.[event] !== undefined;
 
-// the values the columns' hooks on the event give them, validated like any
-// other value would be
-const fire = (cols: Column[], event: Event) => {
-  const hooked = cols.filter(col => isHooked(col, event));
-  return validate(
-    Object.fromEntries(hooked.map(col => [col.key, col])),
-    Object.fromEntries(hooked.map(col => [col.key, col.hooks![event]!()])),
-  );
-};
+// what the columns' hooks on the event set them to
+const fire = (cols: Column[], event: Event) => Object.fromEntries(
+  cols.filter(col => isHooked(col, event)).map(col => [col.key, col.hooks![event]!()]),
+);
 
 // ─── tables ──────────────────────────────────────────────────────────────────
 
@@ -391,10 +386,9 @@ const columnsByKey = (table: Table) => Object.fromEntries(columnsOf(table).map(c
 
 const columnOf = (table: Table, key: string) => columnsByKey(table)[key] ?? raise(`Unknown column "${key}" in table "${table[NAME]}"`);
 
-// columns a hook sets on an event are left out of what that event takes
-type OmitOnInsert = { generated: true } | { hooks: { create: unknown } };
-type OptionalOnInsert = { default: unknown } | { nullable: true };
-type OmitOnUpdate = { generated: true } | { primaryKey: true } | { hooks: { update: unknown } };
+type OmitOnInsert = { generated: true };
+type OptionalOnInsert = { default: unknown } | { nullable: true } | { hooks: { insert: unknown } };
+type OmitOnUpdate = { generated: true } | { primaryKey: true };
 
 type InferForSelect<C extends Columns> = Expand<{
   [K in keyof C]: C[K]['output'];
@@ -449,14 +443,21 @@ const defineTable = <N extends string, S extends Shape>(name: N, shape: S & NoIn
   return tableOf(name, name, columns) as unknown as DefinedTable<N, N, ColumnsOfShape<S>>;
 };
 
-// the columns an insert takes values for: not those generated, or set by a
-// hook on insert
-const insertableOf = (cols: Column[]) => Object.fromEntries(cols.filter(col => !col.generated && !isHooked(col, 'create')).map(col => [col.key, col]));
+// the columns an insert takes values for: all but those generated
+const insertableOf = (cols: Column[]) => Object.fromEntries(cols.filter(col => !col.generated).map(col => [col.key, col]));
 
 // validates a row to be inserted into the table, filling in its defaults.
-// Hooks are left to the insert itself
-const parse = <T extends Table>(table: T, input: unknown) =>
-  validate(insertableOf(columnsOf(assertWhole(table, '"parse"'))), input) as Infer<T, 'insert'>;
+// Hooks are left to the insert itself: columns the row gives no value of
+// their own, and that a hook sets on insert, are left out
+const parse = <T extends Table>(table: T, input: unknown) => {
+  const cols = columnsOf(assertWhole(table, '"parse"'));
+  if (!isPlainObject(input)) return validate(insertableOf(cols), input) as Infer<T, 'insert'>;
+
+  const left = cols.filter(col => isHooked(col, 'insert') && input[col.key] === undefined);
+  const row = Object.fromEntries(Object.entries(input).filter(([key]) => !left.some(col => col.key === key)));
+
+  return validate(insertableOf(cols.filter(col => !left.includes(col))), row) as Infer<T, 'insert'>;
+};
 
 // ─── adapter contract ────────────────────────────────────────────────────────
 
@@ -1119,10 +1120,8 @@ type Changes<C extends Columns> = {
 
 type Assignment = { col: Column; op: 'set' | 'inc' | 'replace'; value?: unknown };
 
-// columns set by a hook on update can't be set, incremented or replaced:
-// their hook's value is set on top of the changes (see `withHooks`)
 const parseChanges = (table: Table, { set = {}, inc = {}, replace = [] }: { set?: Row; inc?: Row; replace?: string[] }) => {
-  const updatable = Object.fromEntries(columnsOf(table).filter(col => !col.generated && !col.primaryKey && !isHooked(col, 'update')).map(col => [col.key, col]));
+  const updatable = Object.fromEntries(columnsOf(table).filter(col => !col.generated && !col.primaryKey).map(col => [col.key, col]));
   const updatableColumn = (key: string) => updatable[key] ?? raise(`"${key}" isn't an updatable column of "${table[NAME]}"`);
 
   const sets = validate(updatable, set, { partial: true });
@@ -1141,13 +1140,15 @@ const parseChanges = (table: Table, { set = {}, inc = {}, replace = [] }: { set?
   ] as Assignment[];
 };
 
-// the changes, plus a `set` from each hook on update. Changes made only of
-// those are still nothing to update
+// the changes, plus a `set` from the hook on update of each column they
+// leave as it is. Changes made only of those are still nothing to update
 const withHooks = (table: Table, assignments: Assignment[], empty: string) => {
   if (assignments.length === 0) throw new Error(empty);
 
-  const hooked = Object.entries(fire(columnsOf(table), 'update'));
-  return [...assignments, ...hooked.map(([key, value]): Assignment => ({ col: columnOf(table, key), op: 'set', value }))];
+  const unchanged = columnsOf(table).filter(col => !assignments.some(assignment => assignment.col === col));
+  const hooked = validate(Object.fromEntries(unchanged.map(col => [col.key, col])), fire(unchanged, 'update'), { partial: true });
+
+  return [...assignments, ...Object.entries(hooked).map(([key, value]): Assignment => ({ col: columnOf(table, key), op: 'set', value }))];
 };
 
 // `qualifier` tells the row's current value apart from EXCLUDED's, on conflict
@@ -1195,7 +1196,10 @@ class InsertBuilder<T extends Table> {
     const { table } = this;
     const cols = columnsOf(table).filter(col => !col.generated || isGeneratedByClient(db.dialect, col));
     const insertable = insertableOf(cols);
-    const rows = this.rows.map(row => ({ ...validate(insertable, row), ...fire(cols, 'create') }));
+
+    // the row's own values win over its hooks'
+    const hooked = (row: Row) => ({ ...row, ...fire(cols.filter(col => row[col.key] === undefined), 'insert') });
+    const rows = this.rows.map(row => validate(insertable, isPlainObject(row) ? hooked(row) : row));
 
     const b = new SqlBuilder(db.dialect)
       .push('INSERT INTO ', quote(table[NAME]), ' (', cols.map(col => quote(col.name)).join(', '), ') VALUES ');
