@@ -23,11 +23,20 @@ type Primitive =
 const NUMERIC: readonly Primitive[] = ['BIGINT', 'DECIMAL', 'FLOAT', 'INTEGER', 'SEQUENCE'];
 type NumericType = 'BIGINT' | 'DECIMAL' | 'FLOAT' | 'INTEGER' | 'SEQUENCE';
 
+// the life-cycle events a column can be set on: inserts, and updates (an
+// upsert's `DO UPDATE` included)
+type Event = 'create' | 'update';
+
+const EVENTS: readonly Event[] = ['create', 'update'];
+
+type Hooks = Partial<Record<Event, () => unknown>>;
+
 type ColumnProps<S extends std.Schema = std.Schema> = {
   type: Primitive;
   schema: S;
   default?: unknown;
   generated?: true;
+  hooks?: Hooks;
   length?: number;
   precision?: number;
   scale?: number;
@@ -81,6 +90,15 @@ class ColumnBuilder<P extends ColumnProps> {
   unsigned(this: ColumnBuilder<P & { type: 'INTEGER' }>) {
     return new ColumnBuilder({ ...this.props, schema: std.integer({ min: 0 }) } as P);
   }
+
+  // sets the column to `fn()` on every insert (`'create'`) or update
+  // (`'update'`) of a row. The hook always wins: the column is left out of
+  // what that event takes, so it can't be given a value of its own
+  on<E extends Event>(event: E, fn: () => std.output<P['schema']>) {
+    if (!EVENTS.includes(event)) throw new Error(`Unknown event "${event}", columns take hooks on ${EVENTS.map(e => `"${e}"`).join(' and ')}`);
+    if (this.props.hooks?.[event]) throw new Error(`The column already has a hook on "${event}"`);
+    return new ColumnBuilder({ ...this.props, hooks: { ...this.props.hooks, [event]: fn } } as Expand<P & { hooks: Record<E, typeof fn> }>);
+  }
 }
 
 const column = <P extends ColumnProps>(props: P) => new ColumnBuilder(props);
@@ -95,9 +113,12 @@ const columnsOfShape = (shape: Shape) => Object.fromEntries(
   Object.entries(shape).map(([key, { props }]) => [key, { ...props, key, name: snakeCase(key) } as Column]),
 );
 
-// embedded fields keep their keys as they are inside the JSON document
+// embedded fields keep their keys as they are inside the JSON document. They
+// aren't columns of their own, so they're never inserted or updated alone
 const fieldsOfShape = (shape: Shape) => Object.fromEntries(
-  Object.entries(shape).map(([key, { props }]) => [key, { ...props, key, name: key } as Column]),
+  Object.entries(shape).map(([key, { props }]) => props.hooks
+    ? raise(`"${key}" is an embedded field, which takes no hooks`)
+    : [key, { ...props, key, name: key } as Column]),
 );
 
 // validation happens field by field (see `check`), so the schema of an
@@ -120,6 +141,22 @@ const embedded = {
 
 // a column of a primitive type, validated by any standard schema
 const defineType = <S extends std.Schema>({ primitive, schema }: { primitive: Exclude<Primitive, 'JSON'>, schema: S }) => column({ type: primitive, schema });
+
+// an instant, read as a `Temporal.Instant`, to the millisecond
+const timestamp = () => column({ type: 'TIMESTAMP', schema: std.instant() });
+
+const now = () => Temporal.Now.instant();
+const createdAt = () => timestamp().on('create', now);
+const updatedAt = () => timestamp().on('create', now).on('update', now);
+
+// when a row was inserted, and when it was last inserted or updated, under
+// keys of the caller's choosing
+const timestamps = <C extends string = 'createdAt', U extends string = 'updatedAt'>(
+  { createdAt: created = 'createdAt' as C, updatedAt: updated = 'updatedAt' as U }: { createdAt?: C, updatedAt?: U } = {},
+) => {
+  if ((created as string) === updated) throw new Error(`Timestamps take two keys, got "${created}" for both`);
+  return { [created]: createdAt(), [updated]: updatedAt() } as Expand<Record<C, ReturnType<typeof createdAt>> & Record<U, ReturnType<typeof updatedAt>>>;
+};
 
 const types = {
   bigint: () => column({ type: 'BIGINT', schema: std.bigint() }),
@@ -146,8 +183,8 @@ const types = {
   sequence: () => column({ type: 'SEQUENCE', schema: std.integer(), generated: true }),
   string: ({ size = 255 }: { size?: number } = {}) => column({ type: 'STRING', schema: std.string({ max: size }), length: size }),
   text: () => column({ type: 'TEXT', schema: std.string() }),
-  // an instant, read as a `Temporal.Instant`, to the millisecond
-  timestamp: () => column({ type: 'TIMESTAMP', schema: std.instant() }),
+  timestamp,
+  timestamps,
   uuidv7: () => column({ type: 'UUID', schema: std.uuid() }),
 };
 
@@ -210,6 +247,18 @@ const validate = (cols: Columns, value: unknown, options: { partial?: boolean } 
   if (issues.length > 0) throw new ValidationError(issues);
 
   return checked!;
+};
+
+const isHooked = (col: Column, event: Event) => col.hooks?.[event] !== undefined;
+
+// the values the columns' hooks on the event give them, validated like any
+// other value would be
+const fire = (cols: Column[], event: Event) => {
+  const hooked = cols.filter(col => isHooked(col, event));
+  return validate(
+    Object.fromEntries(hooked.map(col => [col.key, col])),
+    Object.fromEntries(hooked.map(col => [col.key, col.hooks![event]!()])),
+  );
 };
 
 // ─── tables ──────────────────────────────────────────────────────────────────
@@ -342,9 +391,10 @@ const columnsByKey = (table: Table) => Object.fromEntries(columnsOf(table).map(c
 
 const columnOf = (table: Table, key: string) => columnsByKey(table)[key] ?? raise(`Unknown column "${key}" in table "${table[NAME]}"`);
 
-type OmitOnInsert = { generated: true };
+// columns a hook sets on an event are left out of what that event takes
+type OmitOnInsert = { generated: true } | { hooks: { create: unknown } };
 type OptionalOnInsert = { default: unknown } | { nullable: true };
-type OmitOnUpdate = { generated: true } | { primaryKey: true };
+type OmitOnUpdate = { generated: true } | { primaryKey: true } | { hooks: { update: unknown } };
 
 type InferForSelect<C extends Columns> = Expand<{
   [K in keyof C]: C[K]['output'];
@@ -399,11 +449,14 @@ const defineTable = <N extends string, S extends Shape>(name: N, shape: S & NoIn
   return tableOf(name, name, columns) as unknown as DefinedTable<N, N, ColumnsOfShape<S>>;
 };
 
-// validates a row to be inserted into the table, filling in its defaults
-const parse = <T extends Table>(table: T, input: unknown) => {
-  const insertable = Object.fromEntries(columnsOf(assertWhole(table, '"parse"')).filter(col => !col.generated).map(col => [col.key, col]));
-  return validate(insertable, input) as Infer<T, 'insert'>;
-};
+// the columns an insert takes values for: not those generated, or set by a
+// hook on insert
+const insertableOf = (cols: Column[]) => Object.fromEntries(cols.filter(col => !col.generated && !isHooked(col, 'create')).map(col => [col.key, col]));
+
+// validates a row to be inserted into the table, filling in its defaults.
+// Hooks are left to the insert itself
+const parse = <T extends Table>(table: T, input: unknown) =>
+  validate(insertableOf(columnsOf(assertWhole(table, '"parse"'))), input) as Infer<T, 'insert'>;
 
 // ─── adapter contract ────────────────────────────────────────────────────────
 
@@ -1066,8 +1119,10 @@ type Changes<C extends Columns> = {
 
 type Assignment = { col: Column; op: 'set' | 'inc' | 'replace'; value?: unknown };
 
+// columns set by a hook on update can't be set, incremented or replaced:
+// their hook's value is set on top of the changes (see `withHooks`)
 const parseChanges = (table: Table, { set = {}, inc = {}, replace = [] }: { set?: Row; inc?: Row; replace?: string[] }) => {
-  const updatable = Object.fromEntries(columnsOf(table).filter(col => !col.generated && !col.primaryKey).map(col => [col.key, col]));
+  const updatable = Object.fromEntries(columnsOf(table).filter(col => !col.generated && !col.primaryKey && !isHooked(col, 'update')).map(col => [col.key, col]));
   const updatableColumn = (key: string) => updatable[key] ?? raise(`"${key}" isn't an updatable column of "${table[NAME]}"`);
 
   const sets = validate(updatable, set, { partial: true });
@@ -1084,6 +1139,15 @@ const parseChanges = (table: Table, { set = {}, inc = {}, replace = [] }: { set?
     ...incs,
     ...replace.map(key => ({ col: updatableColumn(key), op: 'replace' })),
   ] as Assignment[];
+};
+
+// the changes, plus a `set` from each hook on update. Changes made only of
+// those are still nothing to update
+const withHooks = (table: Table, assignments: Assignment[], empty: string) => {
+  if (assignments.length === 0) throw new Error(empty);
+
+  const hooked = Object.entries(fire(columnsOf(table), 'update'));
+  return [...assignments, ...hooked.map(([key, value]): Assignment => ({ col: columnOf(table, key), op: 'set', value }))];
 };
 
 // `qualifier` tells the row's current value apart from EXCLUDED's, on conflict
@@ -1130,8 +1194,8 @@ class InsertBuilder<T extends Table> {
 
     const { table } = this;
     const cols = columnsOf(table).filter(col => !col.generated || isGeneratedByClient(db.dialect, col));
-    const insertable = Object.fromEntries(cols.filter(col => !col.generated).map(col => [col.key, col]));
-    const rows = this.rows.map(row => validate(insertable, row));
+    const insertable = insertableOf(cols);
+    const rows = this.rows.map(row => ({ ...validate(insertable, row), ...fire(cols, 'create') }));
 
     const b = new SqlBuilder(db.dialect)
       .push('INSERT INTO ', quote(table[NAME]), ' (', cols.map(col => quote(col.name)).join(', '), ') VALUES ');
@@ -1153,8 +1217,8 @@ class InsertBuilder<T extends Table> {
     if (conflict.on.length > 0) b.push(' (', conflict.on.map(key => quote(columnOf(this.table, key).name)).join(', '), ')');
     if (conflict.do === 'nothing') return b.push(' DO NOTHING');
 
-    const assignments = parseChanges(this.table, conflict.do);
-    if (assignments.length === 0) throw new Error('Nothing to update on conflict: `set`, `inc` and `replace` are empty');
+    const changes = parseChanges(this.table, conflict.do);
+    const assignments = withHooks(this.table, changes, 'Nothing to update on conflict: `set`, `inc` and `replace` are empty');
 
     return renderAssignments(b.push(' DO UPDATE SET '), assignments, this.table[NAME]);
   }
@@ -1482,8 +1546,8 @@ class QueryBuilder<T extends Table, A extends string = AliasOf<T>, N extends str
     this.assertPlain('update');
 
     const { table, where } = this.query;
-    const assignments = parseChanges(assertWhole(table, '"update"'), changes as { set?: Row; inc?: Row });
-    if (assignments.length === 0) throw new Error('Nothing to update: both `set` and `inc` are empty');
+    const parsed = parseChanges(assertWhole(table, '"update"'), changes as { set?: Row; inc?: Row });
+    const assignments = withHooks(table, parsed, 'Nothing to update: both `set` and `inc` are empty');
 
     const b = renderTable(new SqlBuilder(db.dialect).push('UPDATE '), table).push(' SET ');
 

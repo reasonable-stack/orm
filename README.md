@@ -42,6 +42,7 @@ const jane = await from(users)
 - [Connecting](#connecting)
 - [Tables](#tables)
   - [Custom types](#custom-types)
+  - [Hooks and timestamps](#hooks-and-timestamps)
 - [Migrations](#migrations)
 - [Insert](#insert)
   - [On conflict](#on-conflict)
@@ -152,14 +153,15 @@ Keys are camelCase in TypeScript and snake_case in the database
 | `embedded.one({ ... })`            | an object                 | `JSONB`            | `TEXT`                  |
 | `embedded.many({ ... })`           | an array of objects       | `JSONB`            | `TEXT`                  |
 
-| modifier        | effect                                        |
-| :-------------- | :-------------------------------------------- |
-| `.primaryKey()` | primary key                                   |
-| `.nullable()`   | accepts `null`, optional on insert            |
-| `.default(v)`   | value or function used when omitted on insert |
-| `.unique()`     | unique constraint                             |
-| `.generated()`  | a UUIDv7 generated on insert (`t.uuidv7()`)   |
-| `.unsigned()`   | rejects negatives (`t.integer()`)             |
+| modifier         | effect                                                                               |
+| :--------------- | :----------------------------------------------------------------------------------- |
+| `.primaryKey()`  | primary key                                                                          |
+| `.nullable()`    | accepts `null`, optional on insert                                                   |
+| `.default(v)`    | value or function used when omitted on insert                                        |
+| `.unique()`      | unique constraint                                                                    |
+| `.generated()`   | a UUIDv7 generated on insert (`t.uuidv7()`)                                          |
+| `.unsigned()`    | rejects negatives (`t.integer()`)                                                    |
+| `.on(event, fn)` | set to `fn()` on every `'create'` or `'update'` (see [hooks](#hooks-and-timestamps)) |
 
 `t.timestamp()` values are `Temporal.Instant`s, to the millisecond: finer
 ones (`Temporal.Now.instant()` has microseconds) are truncated on the way in,
@@ -190,6 +192,50 @@ const contacts = table('contacts', {
   email: email(),
 });
 ```
+
+### Hooks and timestamps
+
+`.on(event, fn)` sets a column to `fn()` on every insert (`'create'`) or update
+(`'update'`) of a row, an upsert's `DO UPDATE` included. A column can take a
+hook on each event:
+
+```ts
+const now = () => Temporal.Now.instant();
+
+const posts = table('posts', {
+  id: t.uuidv7().generated().primaryKey(),
+  title: t.string(),
+  createdAt: t.timestamp().on('create', now),
+  updatedAt: t.timestamp().on('create', now).on('update', now),
+});
+```
+
+`t.timestamps()` is a shorthand for those two columns, spread into the table.
+Their keys default to `createdAt` and `updatedAt`, and can be renamed:
+
+```ts
+const posts = table('posts', {
+  id: t.uuidv7().generated().primaryKey(),
+  title: t.string(),
+  ...t.timestamps(), // createdAt + updatedAt
+});
+
+const comments = table('comments', {
+  id: t.uuidv7().generated().primaryKey(),
+  ...t.timestamps({ createdAt: 'insertedAt', updatedAt: 'lastChangedAt' }),
+});
+```
+
+The hook always wins: a column it sets is left out of what its event takes, so
+`createdAt` isn't part of `Infer<typeof posts, 'insert'>`, and `updatedAt`
+isn't part of `Infer<typeof posts, 'update'>` (nor of an upsert's `inc` or
+`replace`). Given one anyway, the insert or update throws, before any SQL runs.
+A hook only sets its column on its own event: `createdAt` is still part of
+what `set` takes.
+
+Hooks are called once per row, and their values are validated like any other.
+They don't count as changes: an update with nothing else to `set` or `inc`
+still throws. Embedded fields take no hooks.
 
 
 ## Migrations
