@@ -1,6 +1,6 @@
 {
   "name": "@reasonable-stack/orm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A reasonably good ORM for SQL databases.",
   "author": "Rafael Willians <me@rwillians.com>",
   "license": "MIT",
