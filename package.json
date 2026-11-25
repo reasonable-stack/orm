@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A reasonably good ORM for SQL databases.",
   "author": "Rafael Willians <me@rwillians.com>",
+  "license": "MIT",
   "keywords": ["bun", "maria", "mariadb", "mysql", "orm", "pg", "postgres", "sql", "sqlite", "sqlite3"],
   "publishConfig": {
     "access": "public"
