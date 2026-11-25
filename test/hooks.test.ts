@@ -246,6 +246,18 @@ test('columns set by a hook are optional in what its event takes', () => {
     into(posts).values({ title: 'Hello' });
     into(comments).values({ body: 'Hi', lastChangedAt: Temporal.Now.instant() });
 
+    type PostUpdate = Infer<typeof posts, 'update'>;
+    type CommentUpdate = Infer<typeof comments, 'update'>;
+
+    assert<Equals<keyof PostUpdate, 'title' | 'createdAt' | 'updatedAt'>>();
+    assert<Equals<OptionalKeys<PostUpdate>, keyof PostUpdate>>();
+    assert<Equals<keyof CommentUpdate, 'body' | 'insertedAt' | 'lastChangedAt'>>();
+    assert<Equals<OptionalKeys<CommentUpdate>, keyof CommentUpdate>>();
+
+    const db = undefined as unknown as Database;
+    from(posts).update(db, { set: { title: 'Hello, world' } });
+    from(comments).update(db, { set: { lastChangedAt: Temporal.Now.instant() } });
+
     // @ts-expect-error a hook gives the column's own values
     t.timestamp().on('insert', () => 'now');
   };
